@@ -311,3 +311,25 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- SUPER FORCE RELOAD & PERMISSIONS
+-- This is a nuclear option to fix PGRST205
+begin;
+
+-- Grant usage on schema
+grant usage on schema public to postgres, anon, authenticated, service_role;
+
+-- Grant all on tables
+grant all privileges on all tables in schema public to postgres, anon, authenticated, service_role;
+
+-- Grant all on sequences (for IDs)
+grant all privileges on all sequences in schema public to postgres, anon, authenticated, service_role;
+
+-- Reload schema cache
+NOTIFY pgrst, 'reload schema';
+
+commit;
+
+-- Ensure insert policy is correct for events
+drop policy if exists "Photographers can CRUD own events" on events;
+create policy "Photographers can CRUD own events" on events for all using ( auth.uid() = photographer_id ) with check ( auth.uid() = photographer_id );
