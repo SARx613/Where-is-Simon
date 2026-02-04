@@ -4,7 +4,7 @@ import { useEffect, useState, use } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import SelfieCapture from '@/components/SelfieCapture';
-import { Download, Share2, Heart, AlertTriangle } from 'lucide-react';
+import { Download, Share2, AlertTriangle } from 'lucide-react';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type Photo = {
@@ -152,6 +152,7 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
                 {matches.map((photo) => (
                   <div key={photo.id} className="bg-white rounded-lg shadow overflow-hidden group relative">
                     <div className="aspect-[2/3] relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={photo.url}
                         alt="Souvenir"
@@ -199,7 +200,7 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
             )}
 
             <div className="mt-12 text-center border-t pt-8">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">Livre d'or</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4">Livre d&apos;or</h3>
               <div className="max-w-xl mx-auto bg-white p-6 rounded-lg shadow-sm">
                 <textarea
                   className="w-full border rounded p-3 mb-2 focus:ring-2 focus:ring-indigo-500 outline-none"

@@ -6,7 +6,7 @@ export default function LandingPage() {
       <div className="text-center p-8">
         <h1 className="text-5xl font-bold text-indigo-600 mb-6">Where is Simon?</h1>
         <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          La plateforme de photos d'événements intelligente.
+          La plateforme de photos d&apos;événements intelligente.
           Retrouvez instantanément toutes vos photos grâce à la reconnaissance faciale.
         </p>
 
@@ -23,7 +23,7 @@ export default function LandingPage() {
         </div>
 
         <p className="mt-12 text-gray-400 text-sm">
-          Pour tester, accédez à une URL d'événement (ex: /e/mon-mariage)
+          Pour tester, accédez à une URL d&apos;événement (ex: /e/mon-mariage)
         </p>
       </div>
     </div>

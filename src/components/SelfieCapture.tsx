@@ -107,6 +107,7 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
   if (image) {
     return (
       <div className="flex flex-col items-center bg-white p-6 rounded-lg shadow-lg">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={image} alt="Selfie" className="w-48 h-48 object-cover rounded-full border-4 border-indigo-100 mb-4" />
         <p className="text-green-600 font-medium mb-4 flex items-center">
           <span className="mr-2">✓</span> Visage détecté
