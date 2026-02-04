@@ -22,9 +22,12 @@ export default function LandingPage() {
               >
                 Je suis Photographe
               </Link>
-              <button className="bg-indigo-800 bg-opacity-30 border border-white border-opacity-30 text-white px-8 py-3 rounded-full font-bold hover:bg-opacity-40 transition shadow text-lg backdrop-blur-sm">
+              <Link
+                href="/join"
+                className="bg-indigo-800 bg-opacity-30 border border-white border-opacity-30 text-white px-8 py-3 rounded-full font-bold hover:bg-opacity-40 transition shadow text-lg backdrop-blur-sm flex items-center justify-center"
+              >
                 Je suis Invité
-              </button>
+              </Link>
             </div>
             <p className="mt-4 text-sm text-indigo-200">
               Invités : utilisez le lien fourni par votre photographe (ex: /e/mariage-alice-bob)
