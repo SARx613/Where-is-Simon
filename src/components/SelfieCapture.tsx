@@ -1,0 +1,172 @@
+'use client';
+
+import { useState, useRef } from 'react';
+import { Camera, Upload, X, RefreshCw } from 'lucide-react';
+import { getFaceDescriptor } from '@/lib/face-rec';
+
+interface SelfieCaptureProps {
+  onDescriptorComputed: (descriptor: Float32Array, imageUrl: string) => void;
+}
+
+export default function SelfieCapture({ onDescriptorComputed }: SelfieCaptureProps) {
+  const [mode, setMode] = useState<'initial' | 'camera' | 'upload'>('initial');
+  const [image, setImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Camera Logic
+  const startCamera = async () => {
+    setMode('camera');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera error", err);
+      alert("Impossible d'accéder à la caméra.");
+      setMode('initial');
+    }
+  };
+
+  const takePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setImage(dataUrl);
+        processImage(dataUrl);
+
+        // Stop stream
+        const stream = video.srcObject as MediaStream;
+        stream?.getTracks().forEach(track => track.stop());
+      }
+    }
+  };
+
+  // Upload Logic
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (ev.target?.result) {
+          const dataUrl = ev.target.result as string;
+          setImage(dataUrl);
+          setMode('upload');
+          processImage(dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const processImage = async (dataUrl: string) => {
+    setLoading(true);
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise(r => img.onload = r);
+
+    try {
+      const descriptor = await getFaceDescriptor(img);
+      if (descriptor) {
+        onDescriptorComputed(descriptor, dataUrl);
+      } else {
+        alert("Aucun visage détecté. Essayez une autre photo.");
+        setImage(null);
+        if (mode === 'camera') startCamera();
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Erreur lors de l'analyse.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setImage(null);
+    setMode('initial');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 bg-white rounded-lg shadow-lg">
+        <RefreshCw className="animate-spin text-indigo-600 mb-4" size={32} />
+        <p>Analyse de votre visage...</p>
+      </div>
+    );
+  }
+
+  if (image) {
+    return (
+      <div className="flex flex-col items-center bg-white p-6 rounded-lg shadow-lg">
+        <img src={image} alt="Selfie" className="w-48 h-48 object-cover rounded-full border-4 border-indigo-100 mb-4" />
+        <p className="text-green-600 font-medium mb-4 flex items-center">
+          <span className="mr-2">✓</span> Visage détecté
+        </p>
+        <button onClick={reset} className="text-sm text-gray-500 hover:text-gray-700 underline">
+          Recommencer
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-auto">
+      <h3 className="text-2xl font-bold text-center mb-6 text-gray-800">Trouvez vos photos</h3>
+
+      {mode === 'initial' && (
+        <div className="space-y-4">
+          <button
+            onClick={startCamera}
+            className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 flex items-center justify-center transition"
+          >
+            <Camera className="mr-2" />
+            Prendre un selfie
+          </button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white text-gray-500">ou</span>
+            </div>
+          </div>
+
+          <label className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-lg font-medium hover:bg-gray-50 flex items-center justify-center cursor-pointer transition">
+            <Upload className="mr-2" />
+            Uploader une photo
+            <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+          </label>
+        </div>
+      )}
+
+      {mode === 'camera' && (
+        <div className="relative bg-black rounded-lg overflow-hidden">
+          <video ref={videoRef} autoPlay playsInline className="w-full" />
+          <canvas ref={canvasRef} className="hidden" />
+          <button
+            onClick={takePhoto}
+            className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white rounded-full p-4 shadow-lg hover:scale-105 transition"
+          >
+            <div className="w-6 h-6 bg-red-500 rounded-full border-2 border-white"></div>
+          </button>
+          <button
+            onClick={() => setMode('initial')}
+            className="absolute top-2 right-2 text-white bg-black/50 rounded-full p-2"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
