@@ -1,11 +1,23 @@
+'use client';
+
 import Link from 'next/link';
 import { Camera, LayoutDashboard, Settings, LogOut } from 'lucide-react';
+import { createClient } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter();
+  const supabase = createClient();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
@@ -30,7 +42,10 @@ export default function DashboardLayout({
         </nav>
 
         <div className="p-4 border-t">
-          <button className="flex items-center space-x-2 text-red-500 hover:bg-red-50 w-full p-3 rounded-lg">
+          <button
+            onClick={handleLogout}
+            className="flex items-center space-x-2 text-red-500 hover:bg-red-50 w-full p-3 rounded-lg"
+          >
             <LogOut size={20} />
             <span>Déconnexion</span>
           </button>

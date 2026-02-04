@@ -79,8 +79,10 @@ Pour gérer les abonnements et les achats de tirages :
 
 Le workflow GitHub Actions (`.github/workflows/ci.yml`) vérifie le build à chaque push.
 Pour déployer :
-- **Vercel** : Connectez votre repo GitHub à Vercel. La configuration est automatique.
-- **GitHub Pages** : Nécessite une configuration d'export statique (non compatible avec les routes dynamiques `[slug]` sans configuration serveur ou fallback). Vercel est recommandé.
+- **Vercel** (Recommandé) : Connectez votre repo GitHub à Vercel. La configuration est automatique. Ajoutez les variables d'environnement `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
+**Important : Configuration Auth**
+Consultez le fichier [INSTRUCTIONS_AUTH.md](./INSTRUCTIONS_AUTH.md) pour configurer la connexion Google avec Supabase.
 
 ## Licence
 
