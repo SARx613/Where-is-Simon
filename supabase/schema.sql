@@ -291,3 +291,23 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- REFRESH SCHEMA CACHE & PERMISSIONS FIX
+NOTIFY pgrst, 'reload schema';
+
+-- Grant permissions explicitly to ensure PostgREST can see tables
+grant usage on schema public to postgres, anon, authenticated, service_role;
+grant all privileges on all tables in schema public to postgres, anon, authenticated, service_role;
+grant all privileges on all functions in schema public to postgres, anon, authenticated, service_role;
+grant all privileges on all sequences in schema public to postgres, anon, authenticated, service_role;
+
+-- Ensure RLS is enabled but allows access via policies
+alter table events enable row level security;
+alter table profiles enable row level security;
+alter table photos enable row level security;
+
+-- Force trigger creation again just in case
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
