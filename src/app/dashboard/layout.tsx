@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Camera, LayoutDashboard, Settings, LogOut } from 'lucide-react';
+import { Camera, LayoutDashboard, Settings, LogOut, CreditCard } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -38,6 +38,10 @@ export default function DashboardLayout({
           <Link href="/dashboard/settings" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
             <Settings size={20} />
             <span>Paramètres</span>
+          </Link>
+          <Link href="/dashboard/billing" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
+            <CreditCard size={20} />
+            <span>Facturation</span>
           </Link>
         </nav>
 

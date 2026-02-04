@@ -26,11 +26,18 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
 
   useEffect(() => {
     async function loadEvent() {
-      const { data } = await supabase
+      // Decode slug just in case
+      const decodedSlug = decodeURIComponent(slug);
+
+      const { data, error } = await supabase
         .from('events')
         .select('*')
-        .eq('slug', slug)
+        .eq('slug', decodedSlug)
         .single();
+
+      if (error) {
+        console.error("Error loading event:", error);
+      }
 
       if (data) setEvent(data);
       setLoading(false);
