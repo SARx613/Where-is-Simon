@@ -47,12 +47,16 @@ export default function NewEventPage() {
         tier: formData.tier as any
       }).select().single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Error:", error);
+        throw new Error(error.message + " (" + error.code + ")");
+      }
 
       router.push(`/dashboard/events/${data.id}`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erreur inconnue";
-      alert('Erreur: ' + msg);
+      console.error("Creation failed:", error);
+      alert('Erreur lors de la création : ' + msg);
     } finally {
       setLoading(false);
     }
