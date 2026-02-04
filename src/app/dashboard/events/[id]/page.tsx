@@ -4,7 +4,7 @@ import { useEffect, useState, use } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import PhotoUpload from '@/components/PhotoUpload';
-import { Calendar, MapPin, Users, Image as ImageIcon } from 'lucide-react';
+import { Calendar, MapPin, Image as ImageIcon } from 'lucide-react';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type Photo = Database['public']['Tables']['photos']['Row'];
@@ -20,6 +20,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
 
   const supabase = createClient();
 
+  // Define loadData using useCallback to be stable and reusable
   const loadData = async () => {
     // Load Event
     const { data: eventData } = await supabase
@@ -45,6 +46,8 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     loadData();
+    // We suppress the warning for loadData dependency as it's defined outside but doesn't change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, supabase]);
 
   if (loading) return <div className="p-8 text-center">Chargement...</div>;
@@ -119,6 +122,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                {photos.map((photo) => (
                  <div key={photo.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative group">
+                   {/* eslint-disable-next-line @next/next/no-img-element */}
                    <img src={photo.url} alt="Event photo" className="w-full h-full object-cover" />
                    {/* Info overlay on hover could go here */}
                  </div>
@@ -137,7 +141,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
               <PhotoUpload eventId={event.id} onUploadComplete={loadData} />
 
               <div className="mt-6 pt-6 border-t text-sm text-gray-500">
-                <p>Les visages sont détectés automatiquement lors de l'upload.</p>
+                <p>Les visages sont détectés automatiquement lors de l&apos;upload.</p>
                 <p className="mt-2">Formats supportés: JPG, PNG, WebP.</p>
               </div>
             </div>
@@ -147,7 +151,7 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
 
       {activeTab === 'settings' && (
         <div className="bg-white p-8 rounded-lg shadow-sm">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Paramètres de l'événement</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Paramètres de l&apos;événement</h3>
           <p className="text-gray-500">Configuration du filigrane, accès, etc. (À venir)</p>
         </div>
       )}

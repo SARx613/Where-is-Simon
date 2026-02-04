@@ -19,7 +19,7 @@ export default function EventsPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('events')
           .select('*')
           .eq('photographer_id', user.id)
@@ -53,7 +53,7 @@ export default function EventsPage() {
         <div className="text-center py-10">Chargement...</div>
       ) : events.length === 0 ? (
         <div className="bg-white p-10 rounded-lg shadow-sm text-center">
-          <p className="text-gray-500 mb-4">Vous n'avez pas encore créé d'événement.</p>
+          <p className="text-gray-500 mb-4">Vous n&apos;avez pas encore créé d&apos;événement.</p>
           <Link
             href="/dashboard/events/new"
             className="text-indigo-600 font-medium hover:underline"
@@ -71,6 +71,7 @@ export default function EventsPage() {
             >
               <div className="h-48 bg-gray-200 relative">
                 {event.cover_url ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={event.cover_url} alt={event.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-indigo-100 text-indigo-300">

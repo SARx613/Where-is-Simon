@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { Database } from '@/types/supabase';
 
 export default function NewEventPage() {
   const router = useRouter();
@@ -44,14 +43,16 @@ export default function NewEventPage() {
         date: formData.date,
         location: formData.location,
         description: formData.description,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         tier: formData.tier as any
       }).select().single();
 
       if (error) throw error;
 
       router.push(`/dashboard/events/${data.id}`);
-    } catch (error: any) {
-      alert('Erreur: ' + error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erreur inconnue";
+      alert('Erreur: ' + msg);
     } finally {
       setLoading(false);
     }
@@ -63,7 +64,7 @@ export default function NewEventPage() {
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l'événement</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l&apos;événement</label>
           <input
             type="text"
             name="name"

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { getAllFaceDescriptors } from '@/lib/face-rec';
-import { Upload, X, Check, Loader } from 'lucide-react';
+import { Upload, X, Loader } from 'lucide-react';
 
 interface PhotoUploadProps {
   eventId: string;
@@ -127,9 +127,10 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
         setProgress(prev => ({ ...prev, [statusKey]: 'Terminé' }));
         URL.revokeObjectURL(objectUrl);
 
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Erreur inconnue";
         console.error("Upload error", error);
-        setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: ' + error.message }));
+        setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: ' + msg }));
       }
     }
 
@@ -209,7 +210,7 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
                  onClick={uploadFiles}
                  className="w-full py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex justify-center items-center"
                >
-                 Commencer l'upload et l'analyse
+                 Commencer l&apos;upload et l&apos;analyse
                </button>
              </div>
           )}

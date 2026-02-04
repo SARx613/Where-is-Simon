@@ -17,7 +17,7 @@ export default function DashboardLayout({
         <nav className="flex-1 px-4 space-y-2">
           <Link href="/dashboard" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
             <LayoutDashboard size={20} />
-            <span>Vue d'ensemble</span>
+            <span>Vue d&apos;ensemble</span>
           </Link>
           <Link href="/dashboard/events" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
             <Camera size={20} />
