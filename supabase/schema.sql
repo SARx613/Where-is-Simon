@@ -359,16 +359,21 @@ end;
 $$;
 
 -- FIX RPC SIGNATURE AND RELOAD
--- Change tier to text to avoid type mismatch issues with PostgREST
+-- FIX RPC SIGNATURE AND RELOAD (UPDATED 2024-02-28)
+-- Change tier AND date to text to avoid type mismatch issues with PostgREST (PGRST202)
+-- when client sends strings for all fields.
+
+-- Drop known previous signatures
 drop function if exists create_event(text, text, date, text, text, event_tier);
+drop function if exists create_event(text, text, date, text, text, text);
 
 create or replace function create_event(
   name text,
   slug text,
-  date date,
+  date text, -- Input as text 'YYYY-MM-DD'
   location text,
   description text,
-  tier text -- Changed from event_tier to text for better compatibility
+  tier text  -- Input as text 'starter'
 )
 returns json
 language plpgsql
@@ -376,9 +381,25 @@ security definer
 as $$
 declare
   new_event_id uuid;
+  valid_date date;
+  valid_tier event_tier;
 begin
+  -- Cast date
+  begin
+    valid_date := date::date;
+  exception when others then
+    raise exception 'Invalid date format: %', date;
+  end;
+
+  -- Cast tier
+  begin
+    valid_tier := tier::event_tier;
+  exception when others then
+    raise exception 'Invalid tier: %', tier;
+  end;
+
   insert into events (photographer_id, name, slug, date, location, description, tier)
-  values (auth.uid(), name, slug, date, location, description, tier::event_tier)
+  values (auth.uid(), name, slug, valid_date, location, description, valid_tier)
   returning id into new_event_id;
 
   return json_build_object('id', new_event_id);
@@ -386,7 +407,7 @@ end;
 $$;
 
 -- Grant execute permission explicitly
-grant execute on function create_event(text, text, date, text, text, text) to postgres, anon, authenticated, service_role;
+grant execute on function create_event(text, text, text, text, text, text) to postgres, anon, authenticated, service_role;
 
 -- Force schema reload again
 NOTIFY pgrst, 'reload schema';
