@@ -357,3 +357,36 @@ begin
   return json_build_object('id', new_event_id);
 end;
 $$;
+
+-- FIX RPC SIGNATURE AND RELOAD
+-- Change tier to text to avoid type mismatch issues with PostgREST
+drop function if exists create_event(text, text, date, text, text, event_tier);
+
+create or replace function create_event(
+  name text,
+  slug text,
+  date date,
+  location text,
+  description text,
+  tier text -- Changed from event_tier to text for better compatibility
+)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+  new_event_id uuid;
+begin
+  insert into events (photographer_id, name, slug, date, location, description, tier)
+  values (auth.uid(), name, slug, date, location, description, tier::event_tier)
+  returning id into new_event_id;
+
+  return json_build_object('id', new_event_id);
+end;
+$$;
+
+-- Grant execute permission explicitly
+grant execute on function create_event(text, text, date, text, text, text) to postgres, anon, authenticated, service_role;
+
+-- Force schema reload again
+NOTIFY pgrst, 'reload schema';
