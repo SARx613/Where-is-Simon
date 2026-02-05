@@ -36,8 +36,8 @@ export default function NewEventPage() {
 
       if (!user) throw new Error('Vous devez être connecté');
 
-      const { data, error } = await supabase.from('events').insert({
-        photographer_id: user.id,
+      // Use RPC to bypass potential PGRST205 cache issues
+      const { data, error } = await supabase.rpc('create_event', {
         name: formData.name,
         slug: formData.slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         date: formData.date,
@@ -45,14 +45,16 @@ export default function NewEventPage() {
         description: formData.description,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         tier: formData.tier as any
-      }).select().single();
+      });
 
       if (error) {
         console.error("Supabase Error:", error);
         throw new Error(error.message + " (" + error.code + ")");
       }
 
-      router.push(`/dashboard/events/${data.id}`);
+      // RPC returns { id: ... } inside data
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      router.push(`/dashboard/events/${(data as any).id}`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erreur inconnue";
       console.error("Creation failed:", error);
@@ -127,17 +129,59 @@ export default function NewEventPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Forfait</label>
-          <select
-            name="tier"
-            className="w-full px-4 py-2 border rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-            value={formData.tier}
-            onChange={handleChange}
-          >
-            <option value="starter">Pack Souvenir (Starter)</option>
-            <option value="pro">Pack Évènement (Pro)</option>
-            <option value="premium">Pack Héritage (Premium)</option>
-          </select>
+          <label className="block text-sm font-medium text-gray-700 mb-3">Choisir un Forfait</label>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Starter */}
+            <label className={`cursor-pointer border-2 rounded-xl p-4 transition hover:border-indigo-300 ${formData.tier === 'starter' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <input
+                  type="radio"
+                  name="tier"
+                  value="starter"
+                  checked={formData.tier === 'starter'}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-xs font-bold uppercase bg-gray-200 text-gray-700 px-2 py-1 rounded">Gratuit</span>
+              </div>
+              <h3 className="font-bold text-gray-900">Pack Souvenir</h3>
+              <p className="text-xs text-gray-500 mt-1">500 photos, 3 mois</p>
+            </label>
+
+            {/* Pro */}
+            <label className={`cursor-pointer border-2 rounded-xl p-4 transition hover:border-indigo-300 relative ${formData.tier === 'pro' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <input
+                  type="radio"
+                  name="tier"
+                  value="pro"
+                  checked={formData.tier === 'pro'}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-xs font-bold uppercase bg-indigo-100 text-indigo-700 px-2 py-1 rounded">29€/mois</span>
+              </div>
+              <h3 className="font-bold text-gray-900">Pack Événement</h3>
+              <p className="text-xs text-gray-500 mt-1">5 000 photos, Branding, Ventes</p>
+            </label>
+
+            {/* Premium */}
+            <label className={`cursor-pointer border-2 rounded-xl p-4 transition hover:border-indigo-300 ${formData.tier === 'premium' ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <input
+                  type="radio"
+                  name="tier"
+                  value="premium"
+                  checked={formData.tier === 'premium'}
+                  onChange={handleChange}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-xs font-bold uppercase bg-yellow-100 text-yellow-800 px-2 py-1 rounded">99€/mois</span>
+              </div>
+              <h3 className="font-bold text-gray-900">Pack Héritage</h3>
+              <p className="text-xs text-gray-500 mt-1">Illimité, Archive, 0% Com</p>
+            </label>
+          </div>
         </div>
 
         <div className="flex justify-end pt-4">

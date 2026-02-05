@@ -214,9 +214,16 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
                   placeholder="Laissez un petit mot aux mariés..."
                   rows={3}
                 ></textarea>
-                <button className="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">
-                  Envoyer
-                </button>
+                <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center text-gray-500 text-sm">
+                    <button className="flex items-center hover:text-indigo-600 mr-4">
+                      🎤 Message Vocal
+                    </button>
+                  </div>
+                  <button className="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">
+                    Envoyer
+                  </button>
+                </div>
               </div>
             </div>
           </div>
