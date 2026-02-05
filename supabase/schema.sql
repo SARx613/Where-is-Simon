@@ -333,3 +333,27 @@ commit;
 -- Ensure insert policy is correct for events
 drop policy if exists "Photographers can CRUD own events" on events;
 create policy "Photographers can CRUD own events" on events for all using ( auth.uid() = photographer_id ) with check ( auth.uid() = photographer_id );
+
+-- RPC to bypass PGRST205 on insert
+create or replace function create_event(
+  name text,
+  slug text,
+  date date,
+  location text,
+  description text,
+  tier event_tier
+)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+  new_event_id uuid;
+begin
+  insert into events (photographer_id, name, slug, date, location, description, tier)
+  values (auth.uid(), name, slug, date, location, description, tier)
+  returning id into new_event_id;
+
+  return json_build_object('id', new_event_id);
+end;
+$$;

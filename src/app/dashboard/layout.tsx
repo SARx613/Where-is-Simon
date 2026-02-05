@@ -35,6 +35,10 @@ export default function DashboardLayout({
             <Camera size={20} />
             <span>Événements</span>
           </Link>
+          <Link href="/dashboard/notifications" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
+            <Settings size={20} />
+            <span>Notifications</span>
+          </Link>
           <Link href="/dashboard/settings" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
             <Settings size={20} />
             <span>Paramètres</span>
