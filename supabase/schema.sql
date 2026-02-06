@@ -411,3 +411,44 @@ grant execute on function create_event(text, text, text, text, text, text) to po
 
 -- Force schema reload again
 NOTIFY pgrst, 'reload schema';
+
+-- FIX RPC: Auto-create profile if missing during event creation
+create or replace function create_event_v3(
+  name text,
+  slug text,
+  date date,
+  location text,
+  description text,
+  tier text
+)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+  new_event_id uuid;
+  user_id uuid;
+begin
+  user_id := auth.uid();
+
+  -- Ensure profile exists
+  insert into public.profiles (id, full_name, role)
+  values (user_id, 'Photographer', 'photographer')
+  on conflict (id) do nothing;
+
+  -- Create event
+  insert into events (photographer_id, name, slug, date, location, description, tier)
+  values (user_id, name, slug, date, location, description, tier::event_tier)
+  returning id into new_event_id;
+
+  return json_build_object('id', new_event_id);
+end;
+$$;
+
+-- FIX EXISTING USERS SCRIPT (To be run manually if needed, but the RPC fix covers it)
+insert into public.profiles (id, full_name, role)
+select id, raw_user_meta_data->>'full_name', 'photographer'
+from auth.users
+where id not in (select id from public.profiles);
+
+NOTIFY pgrst, 'reload schema';
