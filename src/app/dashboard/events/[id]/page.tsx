@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import PhotoUpload from '@/components/PhotoUpload';
@@ -103,16 +104,12 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
           >
             Photos & Upload
           </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'settings'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+          <Link
+            href={`/dashboard/events/${id}/settings`}
+            className={`py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
           >
             Paramètres
-          </button>
+          </Link>
         </nav>
       </div>
 

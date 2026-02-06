@@ -169,12 +169,14 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
 
                       {/* Watermark Overlay */}
                       {event.watermark_enabled && (
-                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-50">
+                        <div
+                          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                          style={{ opacity: event.watermark_opacity ?? 0.5 }}
+                        >
                           <div className="transform -rotate-45 border-4 border-white text-white text-4xl font-bold p-4 uppercase tracking-widest bg-black/20 backdrop-blur-sm rounded-xl">
-                            PREVIEW
+                            {event.watermark_text || 'PREVIEW'}
                           </div>
-                          {/* Repeated pattern for robustness */}
-                          <div className="absolute inset-0 bg-[url('https://placehold.co/200x200/000000/ffffff?text=WATERMARK')] opacity-10 bg-repeat"></div>
+                          <div className="absolute inset-0 bg-repeat opacity-10" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='200' height='200' viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Ctext x='20' y='100' font-family='Arial' font-size='20' fill='white' transform='rotate(-45 100 100)'%3E${event.watermark_text || 'WATERMARK'}%3C/text%3E%3C/svg%3E")` }}></div>
                         </div>
                       )}
 
@@ -187,16 +189,26 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
                            <button className="p-2 hover:bg-white/20 rounded-full" title="Partager">
                              <Share2 size={20} />
                            </button>
-                           <button className="p-2 hover:bg-white/20 rounded-full" title="Signaler">
+                           <button className="p-2 hover:bg-white/20 rounded-full" title="Signaler / Masquer (Vie Privée)">
                              <AlertTriangle size={20} />
                            </button>
                          </div>
-                         {event.tier !== 'starter' && (
-                           <div className="mt-2 text-center">
-                             <button className="w-full bg-indigo-600 text-white text-sm py-2 rounded font-medium hover:bg-indigo-700">
-                               Acheter le tirage
-                             </button>
-                           </div>
+
+                         {/* Download or Buy */}
+                         {event.enable_downloads ? (
+                            <div className="mt-2 text-center">
+                              <button className="w-full bg-green-600 text-white text-sm py-2 rounded font-medium hover:bg-green-700 flex items-center justify-center">
+                                <Download size={16} className="mr-2" /> Télécharger
+                              </button>
+                            </div>
+                         ) : (
+                           (event.price_per_photo || 0) > 0 && (
+                             <div className="mt-2 text-center">
+                               <button className="w-full bg-indigo-600 text-white text-sm py-2 rounded font-medium hover:bg-indigo-700">
+                                 Acheter {((event.price_per_photo || 0) / 100).toFixed(2)} €
+                               </button>
+                             </div>
+                           )
                          )}
                       </div>
                     </div>
