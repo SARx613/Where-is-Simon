@@ -36,8 +36,8 @@ export default function NewEventPage() {
 
       if (!user) throw new Error('Vous devez être connecté');
 
-      // Use RPC to bypass potential PGRST205 cache issues
-      const { data, error } = await supabase.rpc('create_event', {
+      // Use RPC V3 to bypass potential PGRST205 cache issues
+      const { data, error } = await supabase.rpc('create_event_v3', {
         name: formData.name,
         slug: formData.slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         date: formData.date,
