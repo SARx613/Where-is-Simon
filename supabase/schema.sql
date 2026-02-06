@@ -452,3 +452,49 @@ from auth.users
 where id not in (select id from public.profiles);
 
 NOTIFY pgrst, 'reload schema';
+
+-- ULTIMATE FIX FOR 23503
+-- We redefine the RPC to be extremely aggressive about profile creation.
+
+create or replace function create_event_v3(
+  name text,
+  slug text,
+  date date,
+  location text,
+  description text,
+  tier text
+)
+returns json
+language plpgsql
+security definer
+as $$
+declare
+  new_event_id uuid;
+  user_id uuid;
+  profile_exists boolean;
+begin
+  user_id := auth.uid();
+
+  if user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  -- Check if profile exists
+  select exists(select 1 from public.profiles where id = user_id) into profile_exists;
+
+  if not profile_exists then
+    -- Force create profile with minimal data
+    insert into public.profiles (id, full_name, role)
+    values (user_id, 'Photographer (Auto)', 'photographer');
+  end if;
+
+  -- Create event
+  insert into events (photographer_id, name, slug, date, location, description, tier)
+  values (user_id, name, slug, date, location, description, tier::event_tier)
+  returning id into new_event_id;
+
+  return json_build_object('id', new_event_id);
+end;
+$$;
+
+NOTIFY pgrst, 'reload schema';
