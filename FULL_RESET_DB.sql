@@ -235,3 +235,40 @@ create policy "Auth Upload" on storage.objects for insert with check ( bucket_id
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
+
+-- ==========================================
+-- MISE A JOUR SCHEMA (VERSION AVANCEE)
+-- ==========================================
+
+-- Alter EVENTS table for settings
+alter table public.events
+  add column if not exists watermark_text text default 'Where is Simon?',
+  add column if not exists watermark_opacity float default 0.5,
+  add column if not exists enable_guestbook boolean default true,
+  add column if not exists enable_privacy_mode boolean default true,
+  add column if not exists enable_downloads boolean default false,
+  add column if not exists price_per_photo integer default 0, -- in cents
+  add column if not exists currency text default 'eur';
+
+-- Alter PHOTOS table for processing status
+alter table public.photos
+  add column if not exists status text default 'ready'; -- 'uploading', 'processing', 'ready', 'error'
+
+-- Create PHOTO_LIKES table (Album Selection)
+create table if not exists public.photo_likes (
+  id uuid default gen_random_uuid() primary key,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  photo_id uuid references public.photos(id) on delete cascade not null,
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  unique(photo_id, user_id)
+);
+
+-- RLS for Likes
+alter table public.photo_likes enable row level security;
+create policy "Users can like photos" on public.photo_likes for all using ( auth.uid() = user_id );
+create policy "Photographers see likes" on public.photo_likes for select using (
+  exists ( select 1 from public.photos join public.events on photos.event_id = events.id where photos.id = photo_likes.photo_id and events.photographer_id = auth.uid() )
+);
+
+-- Reload Cache
+NOTIFY pgrst, 'reload schema';

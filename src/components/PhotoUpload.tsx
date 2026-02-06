@@ -2,7 +2,6 @@
 
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { getAllFaceDescriptors } from '@/lib/face-rec';
 import { Upload, X, Loader } from 'lucide-react';
 
 interface PhotoUploadProps {
@@ -72,12 +71,7 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           img.src = objectUrl;
         });
 
-        // 2. Detect Faces
-        const detections = await getAllFaceDescriptors(img);
-
-        setProgress(prev => ({ ...prev, [statusKey]: `Upload (${detections.length} visages)...` }));
-
-        // 3. Upload to Storage
+        // 2. Upload to Storage immediately
         const fileExt = file.name.split('.').pop();
         const fileName = `${eventId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
@@ -90,7 +84,7 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           .from('photos')
           .getPublicUrl(fileName);
 
-        // 4. Insert into DB (photos)
+        // 3. Insert into DB (photos) with 'processing' status
         const { data: photoData, error: dbError } = await supabase
           .from('photos')
           .insert({
@@ -99,32 +93,21 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
             original_name: file.name,
             width: img.naturalWidth,
             height: img.naturalHeight,
-            // embedding column is removed/deprecated, we use photo_faces
+            status: 'processing'
           })
           .select()
           .single();
 
         if (dbError) throw dbError;
 
-        // 5. Insert Face Embeddings (photo_faces)
-        if (detections.length > 0 && photoData) {
-          const faceInserts = detections.map(d => ({
-            photo_id: photoData.id,
-            embedding: Array.from(d.descriptor), // Convert Float32Array to number[]
-            box_x: Math.round(d.detection.box.x),
-            box_y: Math.round(d.detection.box.y),
-            box_width: Math.round(d.detection.box.width),
-            box_height: Math.round(d.detection.box.height)
-          }));
+        // 4. Trigger Server-Side Processing (Fire and Forget)
+        fetch('/api/photos/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photoId: photoData.id, imageUrl: publicUrl }),
+        }).catch(err => console.error("Async process trigger failed", err));
 
-          const { error: faceError } = await supabase
-            .from('photo_faces')
-            .insert(faceInserts);
-
-          if (faceError) console.error("Face insert error:", faceError);
-        }
-
-        setProgress(prev => ({ ...prev, [statusKey]: 'Terminé' }));
+        setProgress(prev => ({ ...prev, [statusKey]: 'En traitement...' }));
         URL.revokeObjectURL(objectUrl);
 
       } catch (error: unknown) {
