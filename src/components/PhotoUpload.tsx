@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { Upload, X, Loader } from 'lucide-react';
+import { Upload, X, Loader, AlertCircle } from 'lucide-react';
 import heic2any from 'heic2any';
 
 interface PhotoUploadProps {
@@ -60,9 +60,14 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
 
   const uploadFiles = async () => {
     setUploading(true);
+    let hasErrors = false;
 
     for (const file of files) {
       const statusKey = file.name;
+      // Skip already uploaded or failed files if retrying?
+      // For now, we just process everything in the list.
+      // If we wanted to be smarter, we could filter.
+
       setProgress(prev => ({ ...prev, [statusKey]: 'Préparation...' }));
 
       try {
@@ -72,16 +77,21 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
         // Convert HEIC to JPEG if needed
         if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
           setProgress(prev => ({ ...prev, [statusKey]: 'Conversion HEIC...' }));
-          const convertedBlob = await heic2any({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.8
-          });
+          try {
+            const convertedBlob = await heic2any({
+              blob: file,
+              toType: 'image/jpeg',
+              quality: 0.8
+            });
 
-          // heic2any can return Blob or Blob[]
-          const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-          fileToUpload = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
-          fileExt = 'jpg';
+            // heic2any can return Blob or Blob[]
+            const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+            fileToUpload = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+            fileExt = 'jpg';
+          } catch (e) {
+            console.error("HEIC Conversion failed:", e);
+            throw new Error(`Échec conversion HEIC: ${e instanceof Error ? e.message : String(e)}`);
+          }
         }
 
         // 1. Load image to get dimensions
@@ -90,7 +100,7 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
 
         await new Promise((resolve, reject) => {
           img.onload = resolve;
-          img.onerror = reject;
+          img.onerror = () => reject(new Error("Impossible de charger l'image (fichier corrompu ?)"));
           img.src = objectUrl;
         });
 
@@ -102,7 +112,10 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           .from('photos')
           .upload(fileName, fileToUpload);
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error("Supabase Storage Error:", uploadError);
+          throw new Error(`Erreur Upload: ${uploadError.message}`);
+        }
 
         const { data: { publicUrl } } = supabase.storage
           .from('photos')
@@ -122,7 +135,10 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           .select()
           .single();
 
-        if (dbError) throw dbError;
+        if (dbError) {
+          console.error("Database Insert Error:", dbError);
+          throw new Error(`Erreur Base de données: ${dbError.message}`);
+        }
 
         // 4. Trigger Server-Side Processing (Fire and Forget)
         fetch('/api/photos/process', {
@@ -135,15 +151,34 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
         URL.revokeObjectURL(objectUrl);
 
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : "Erreur inconnue";
-        console.error("Upload error details:", error);
+        hasErrors = true;
+        let msg = "Erreur inconnue";
+        if (error instanceof Error) {
+            msg = error.message;
+        } else if (typeof error === 'object' && error !== null && 'message' in error) {
+            // Handle Supabase-like error objects that aren't Error instances
+            msg = (error as { message: string }).message;
+        } else if (typeof error === 'string') {
+            msg = error;
+        }
+
+        console.error("Upload error details for", file.name, error);
         setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: ' + msg }));
       }
     }
 
-    setFiles([]);
     setUploading(false);
-    onUploadComplete();
+
+    // Only clear files that succeeded? Or clear all if user wants?
+    // For now, let's keep the logic simple: if successful, clear.
+    // If there were errors, maybe keep them?
+    if (!hasErrors) {
+        setFiles([]);
+        onUploadComplete();
+    } else {
+        // If there are errors, we might want to refresh anyway to show the successful ones
+        onUploadComplete();
+    }
   };
 
   return (
@@ -197,10 +232,11 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
               <li key={i} className="px-4 py-3 flex items-center justify-between">
                 <span className="truncate max-w-xs text-sm text-gray-700">{file.name}</span>
                 {progress[file.name] ? (
-                  <span className={`text-sm ${
-                    progress[file.name] === 'Terminé' ? 'text-green-600' :
-                    progress[file.name].startsWith('Erreur') ? 'text-red-600' : 'text-indigo-600'
+                  <span className={`text-sm flex items-center ${
+                    progress[file.name].startsWith('Erreur') ? 'text-red-600' :
+                    progress[file.name] === 'Terminé' ? 'text-green-600' : 'text-indigo-600'
                   }`}>
+                    {progress[file.name].startsWith('Erreur') && <AlertCircle size={14} className="mr-1"/>}
                     {progress[file.name]}
                   </span>
                 ) : (
