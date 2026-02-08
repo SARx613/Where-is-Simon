@@ -2,15 +2,19 @@
 
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
+import { Database } from '@/types/supabase';
 import { Upload, X, Loader, AlertCircle } from 'lucide-react';
 import heic2any from 'heic2any';
+
+type Photo = Database['public']['Tables']['photos']['Row'];
 
 interface PhotoUploadProps {
   eventId: string;
   onUploadComplete: () => void;
+  onPhotoUploaded?: (photo: Photo) => void;
 }
 
-export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadProps) {
+export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded }: PhotoUploadProps) {
   const [dragActive, setDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -58,54 +62,99 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Helper to resize and compress image
+  const processImage = async (file: File): Promise<{ file: File, width: number, height: number }> => {
+    let srcFile = file;
+
+    // 1. Convert HEIC if needed
+    if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+       try {
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.8
+        });
+        const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        srcFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+      } catch (e) {
+        throw new Error(`Échec conversion HEIC: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    // 2. Resize & Compress using Canvas
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(srcFile);
+
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+
+        const MAX_SIZE = 1920;
+        let width = img.naturalWidth;
+        let height = img.naturalHeight;
+
+        if (width > MAX_SIZE || height > MAX_SIZE) {
+          if (width > height) {
+            height = Math.round(height * (MAX_SIZE / width));
+            width = MAX_SIZE;
+          } else {
+            width = Math.round(width * (MAX_SIZE / height));
+            height = MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error("Canvas context not available"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+             reject(new Error("Compression failed"));
+             return;
+          }
+          const processedFile = new File([blob], srcFile.name.replace(/\.[^/.]+$/, ".jpg"), {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          resolve({ file: processedFile, width, height });
+        }, 'image/jpeg', 0.8);
+      };
+
+      img.onerror = () => {
+         URL.revokeObjectURL(objectUrl);
+         reject(new Error("Impossible de lire l'image"));
+      };
+
+      img.src = objectUrl;
+    });
+  };
+
   const uploadFiles = async () => {
     setUploading(true);
     let hasErrors = false;
 
+    // Process files sequentially
     for (const file of files) {
       const statusKey = file.name;
-      // Skip already uploaded or failed files if retrying?
-      // For now, we just process everything in the list.
-      // If we wanted to be smarter, we could filter.
+      // Skip if already marked done (in case of retry logic, though not fully impl here)
+      if (progress[statusKey] === 'Terminé') continue;
 
-      setProgress(prev => ({ ...prev, [statusKey]: 'Préparation...' }));
+      setProgress(prev => ({ ...prev, [statusKey]: 'Compression...' }));
 
       try {
-        let fileToUpload = file;
-        let fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        // Standardize & Compress
+        const { file: fileToUpload, width, height } = await processImage(file);
 
-        // Convert HEIC to JPEG if needed
-        if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
-          setProgress(prev => ({ ...prev, [statusKey]: 'Conversion HEIC...' }));
-          try {
-            const convertedBlob = await heic2any({
-              blob: file,
-              toType: 'image/jpeg',
-              quality: 0.8
-            });
-
-            // heic2any can return Blob or Blob[]
-            const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-            fileToUpload = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
-            fileExt = 'jpg';
-          } catch (e) {
-            console.error("HEIC Conversion failed:", e);
-            throw new Error(`Échec conversion HEIC: ${e instanceof Error ? e.message : String(e)}`);
-          }
-        }
-
-        // 1. Load image to get dimensions
-        const img = new Image();
-        const objectUrl = URL.createObjectURL(fileToUpload);
-
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = () => reject(new Error("Impossible de charger l'image (fichier corrompu ?)"));
-          img.src = objectUrl;
-        });
-
-        // 2. Upload to Storage
+        // Upload to Storage
         setProgress(prev => ({ ...prev, [statusKey]: 'Upload...' }));
+        const fileExt = 'jpg'; // We force everything to jpg
         const fileName = `${eventId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -113,7 +162,6 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           .upload(fileName, fileToUpload);
 
         if (uploadError) {
-          console.error("Supabase Storage Error:", uploadError);
           throw new Error(`Erreur Upload: ${uploadError.message}`);
         }
 
@@ -121,46 +169,49 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           .from('photos')
           .getPublicUrl(fileName);
 
-        // 3. Insert into DB (photos) with 'processing' status
+        // Insert into DB
+        // NOTE: We assume 'status' column exists now. If not, this might fail, but we added it to schema.
         const { data: photoData, error: dbError } = await supabase
           .from('photos')
           .insert({
             event_id: eventId,
             url: publicUrl,
             original_name: file.name,
-            width: img.naturalWidth,
-            height: img.naturalHeight,
+            width: width,
+            height: height,
             status: 'processing'
           })
           .select()
           .single();
 
         if (dbError) {
-          console.error("Database Insert Error:", dbError);
           throw new Error(`Erreur Base de données: ${dbError.message}`);
         }
 
-        // 4. Trigger Server-Side Processing (Fire and Forget)
+        // Notify parent immediately
+        if (onPhotoUploaded && photoData) {
+            onPhotoUploaded(photoData);
+        }
+
+        // Trigger Server-Side Processing
         fetch('/api/photos/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ photoId: photoData.id, imageUrl: publicUrl }),
         }).catch(err => console.error("Async process trigger failed", err));
 
-        setProgress(prev => ({ ...prev, [statusKey]: 'En traitement...' }));
-        URL.revokeObjectURL(objectUrl);
+        setProgress(prev => ({ ...prev, [statusKey]: 'Terminé' }));
+
+        // Remove from list if successful to declutter?
+        // User wants "immediate" feedback in the gallery.
+        // We can keep it here with "Terminé" or remove it.
+        // Let's keep it to show progress until all done.
 
       } catch (error: unknown) {
         hasErrors = true;
         let msg = "Erreur inconnue";
-        if (error instanceof Error) {
-            msg = error.message;
-        } else if (typeof error === 'object' && error !== null && 'message' in error) {
-            // Handle Supabase-like error objects that aren't Error instances
-            msg = (error as { message: string }).message;
-        } else if (typeof error === 'string') {
-            msg = error;
-        }
+        if (error instanceof Error) msg = error.message;
+        else if (typeof error === 'object' && error !== null && 'message' in error) msg = (error as any).message;
 
         console.error("Upload error details for", file.name, error);
         setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: ' + msg }));
@@ -169,16 +220,9 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
 
     setUploading(false);
 
-    // Only clear files that succeeded? Or clear all if user wants?
-    // For now, let's keep the logic simple: if successful, clear.
-    // If there were errors, maybe keep them?
-    if (!hasErrors) {
-        setFiles([]);
-        onUploadComplete();
-    } else {
-        // If there are errors, we might want to refresh anyway to show the successful ones
-        onUploadComplete();
-    }
+    // Once batch is done, clear successful ones
+    setFiles(prev => prev.filter(f => progress[f.name] !== 'Terminé'));
+    onUploadComplete();
   };
 
   return (

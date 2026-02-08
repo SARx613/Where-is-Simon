@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import PhotoUpload from '@/components/PhotoUpload';
-import { Calendar, MapPin, Image as ImageIcon } from 'lucide-react';
+import { Calendar, MapPin, Image as ImageIcon, Loader } from 'lucide-react';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type Photo = Database['public']['Tables']['photos']['Row'];
@@ -50,6 +50,10 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     // We suppress the warning for loadData dependency as it's defined outside but doesn't change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, supabase]);
+
+  const handlePhotoUploaded = (newPhoto: Photo) => {
+    setPhotos(prev => [newPhoto, ...prev]);
+  };
 
   if (loading) return <div className="p-8 text-center">Chargement...</div>;
   if (!event) return <div className="p-8 text-center">Événement introuvable</div>;
@@ -120,7 +124,14 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                {photos.map((photo) => (
                  <div key={photo.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative group">
                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                   <img src={photo.url} alt="Event photo" className="w-full h-full object-cover" />
+                   <img src={photo.url} alt="Event photo" className={`w-full h-full object-cover ${photo.status === 'processing' ? 'opacity-50' : ''}`} />
+
+                   {photo.status === 'processing' && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20">
+                          <Loader className="animate-spin text-white" />
+                      </div>
+                   )}
+
                    {/* Info overlay on hover could go here */}
                  </div>
                ))}
@@ -135,11 +146,23 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
           <div className="lg:col-span-1">
             <div className="bg-white p-6 rounded-lg shadow-sm sticky top-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Ajouter des photos</h3>
-              <PhotoUpload eventId={event.id} onUploadComplete={loadData} />
+              <PhotoUpload
+                 eventId={event.id}
+                 onUploadComplete={() => {
+                   // We don't necessarily need to reload everything if we updated incrementally,
+                   // but doing a final sync is safe.
+                   // However, if we reload, we might lose the optimistic 'processing' state if the API hasn't finished.
+                   // So maybe just do nothing here if we rely on onPhotoUploaded.
+                   // But user might have deleted photos etc. Let's leave it or remove it.
+                   // Actually, if we reload, the DB might still say 'processing' which is fine.
+                 }}
+                 onPhotoUploaded={handlePhotoUploaded}
+              />
 
               <div className="mt-6 pt-6 border-t text-sm text-gray-500">
                 <p>Les visages sont détectés automatiquement lors de l&apos;upload.</p>
-                <p className="mt-2">Formats supportés: JPG, PNG, WebP.</p>
+                <p className="mt-2">Formats supportés: JPG, PNG, WebP, HEIC.</p>
+                <p className="mt-2">Les photos sont compressées et redimensionnées automatiquement.</p>
               </div>
             </div>
           </div>
