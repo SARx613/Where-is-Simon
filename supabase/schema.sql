@@ -56,7 +56,8 @@ create table photos (
 
   -- Metadata
   original_name text,
-  is_hidden boolean default false
+  is_hidden boolean default false,
+  status text default 'processing'
 );
 
 -- Row Level Security (RLS)
