@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Upload, X, Loader } from 'lucide-react';
+import heic2any from 'heic2any';
 
 interface PhotoUploadProps {
   eventId: string;
@@ -44,8 +45,12 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
   };
 
   const handleFiles = (newFiles: File[]) => {
-    // Filter images only
-    const validFiles = newFiles.filter(file => file.type.startsWith('image/'));
+    // Accept images + HEIC
+    const validFiles = newFiles.filter(file =>
+      file.type.startsWith('image/') ||
+      file.name.toLowerCase().endsWith('.heic') ||
+      file.name.toLowerCase().endsWith('.heif')
+    );
     setFiles(prev => [...prev, ...validFiles]);
   };
 
@@ -58,12 +63,30 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
 
     for (const file of files) {
       const statusKey = file.name;
-      setProgress(prev => ({ ...prev, [statusKey]: 'Traitement (IA)...' }));
+      setProgress(prev => ({ ...prev, [statusKey]: 'Préparation...' }));
 
       try {
-        // 1. Load image for Face API
+        let fileToUpload = file;
+        let fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+
+        // Convert HEIC to JPEG if needed
+        if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+          setProgress(prev => ({ ...prev, [statusKey]: 'Conversion HEIC...' }));
+          const convertedBlob = await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.8
+          });
+
+          // heic2any can return Blob or Blob[]
+          const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+          fileToUpload = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+          fileExt = 'jpg';
+        }
+
+        // 1. Load image to get dimensions
         const img = new Image();
-        const objectUrl = URL.createObjectURL(file);
+        const objectUrl = URL.createObjectURL(fileToUpload);
 
         await new Promise((resolve, reject) => {
           img.onload = resolve;
@@ -71,12 +94,13 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
           img.src = objectUrl;
         });
 
-        // 2. Upload to Storage immediately
-        const fileExt = file.name.split('.').pop();
+        // 2. Upload to Storage
+        setProgress(prev => ({ ...prev, [statusKey]: 'Upload...' }));
         const fileName = `${eventId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
+
         const { error: uploadError } = await supabase.storage
           .from('photos')
-          .upload(fileName, file);
+          .upload(fileName, fileToUpload);
 
         if (uploadError) throw uploadError;
 
@@ -112,7 +136,7 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
 
       } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : "Erreur inconnue";
-        console.error("Upload error", error);
+        console.error("Upload error details:", error);
         setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: ' + msg }));
       }
     }
@@ -148,7 +172,7 @@ export default function PhotoUpload({ eventId, onUploadComplete }: PhotoUploadPr
             ref={inputRef}
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             className="hidden"
             onChange={handleChange}
           />
