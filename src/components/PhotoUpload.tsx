@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
-import { Upload, X, Loader, AlertCircle } from 'lucide-react';
+import { Upload, X, Loader, AlertCircle, TriangleAlert } from 'lucide-react';
 import heic2any from 'heic2any';
 
 type Photo = Database['public']['Tables']['photos']['Row'];
@@ -19,6 +19,7 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<{ [key: string]: string }>({}); // filename -> status
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const supabase = createClient();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -49,12 +50,15 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
   };
 
   const handleFiles = (newFiles: File[]) => {
+    console.log('[WhereIsSimon-DEBUG] handleFiles called with', newFiles.length, 'files');
     // Accept images + HEIC
-    const validFiles = newFiles.filter(file =>
-      file.type.startsWith('image/') ||
+    const validFiles = newFiles.filter(file => {
+      const isValid = file.type.startsWith('image/') ||
       file.name.toLowerCase().endsWith('.heic') ||
-      file.name.toLowerCase().endsWith('.heif')
-    );
+      file.name.toLowerCase().endsWith('.heif');
+      if (!isValid) console.warn('[WhereIsSimon-DEBUG] Invalid file type:', file.type, file.name);
+      return isValid;
+    });
     setFiles(prev => [...prev, ...validFiles]);
   };
 
@@ -64,10 +68,12 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
 
   // Helper to resize and compress image
   const processImage = async (file: File): Promise<{ file: File, width: number, height: number }> => {
+    console.log('[WhereIsSimon-DEBUG] Processing image:', file.name, 'size:', file.size, 'type:', file.type);
     let srcFile = file;
 
     // 1. Convert HEIC if needed
     if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+      console.log('[WhereIsSimon-DEBUG] Converting HEIC:', file.name);
        try {
         const convertedBlob = await heic2any({
           blob: file,
@@ -76,7 +82,9 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
         });
         const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
         srcFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+        console.log('[WhereIsSimon-DEBUG] HEIC converted. New size:', srcFile.size);
       } catch (e) {
+        console.error('[WhereIsSimon-DEBUG] HEIC conversion failed:', e);
         throw new Error(`Échec conversion HEIC: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
@@ -92,6 +100,7 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
         const MAX_SIZE = 1920;
         let width = img.naturalWidth;
         let height = img.naturalHeight;
+        console.log('[WhereIsSimon-DEBUG] Original dimensions:', width, 'x', height);
 
         if (width > MAX_SIZE || height > MAX_SIZE) {
           if (width > height) {
@@ -102,6 +111,8 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
             height = MAX_SIZE;
           }
         }
+
+        console.log('[WhereIsSimon-DEBUG] Resized dimensions:', width, 'x', height);
 
         const canvas = document.createElement('canvas');
         canvas.width = width;
@@ -123,11 +134,13 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
             type: 'image/jpeg',
             lastModified: Date.now(),
           });
+          console.log('[WhereIsSimon-DEBUG] Final processed file size:', processedFile.size);
           resolve({ file: processedFile, width, height });
         }, 'image/jpeg', 0.8);
       };
 
-      img.onerror = () => {
+      img.onerror = (e) => {
+         console.error('[WhereIsSimon-DEBUG] Image load error:', e);
          URL.revokeObjectURL(objectUrl);
          reject(new Error("Impossible de lire l'image"));
       };
@@ -137,13 +150,15 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
   };
 
   const uploadFiles = async () => {
+    console.log('[WhereIsSimon-DEBUG] Starting upload batch of', files.length, 'files');
     setUploading(true);
+    setGlobalError(null);
     let hasErrors = false;
 
     // Process files sequentially
     for (const file of files) {
       const statusKey = file.name;
-      // Skip if already marked done (in case of retry logic, though not fully impl here)
+      // Skip if already marked done
       if (progress[statusKey] === 'Terminé') continue;
 
       setProgress(prev => ({ ...prev, [statusKey]: 'Compression...' }));
@@ -157,11 +172,13 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
         const fileExt = 'jpg'; // We force everything to jpg
         const fileName = `${eventId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
 
+        console.log('[WhereIsSimon-DEBUG] Uploading to Storage:', fileName);
         const { error: uploadError } = await supabase.storage
           .from('photos')
           .upload(fileName, fileToUpload);
 
         if (uploadError) {
+          console.error('[WhereIsSimon-DEBUG] Storage Upload Error:', uploadError);
           throw new Error(`Erreur Upload: ${uploadError.message}`);
         }
 
@@ -169,7 +186,10 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
           .from('photos')
           .getPublicUrl(fileName);
 
+        console.log('[WhereIsSimon-DEBUG] Public URL generated:', publicUrl);
+
         // Insert into DB
+        console.log('[WhereIsSimon-DEBUG] Inserting into DB (photos table)...');
         // NOTE: We assume 'status' column exists now. If not, this might fail, but we added it to schema.
         const { data: photoData, error: dbError } = await supabase
           .from('photos')
@@ -185,8 +205,17 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
           .single();
 
         if (dbError) {
+          console.error('[WhereIsSimon-DEBUG] DB Insert Error:', dbError);
+
+          if (dbError.message && dbError.message.includes("Could not find the 'status' column")) {
+             setGlobalError("ERREUR CRITIQUE: La base de données n'est pas à jour. Veuillez exécuter le script SQL de migration (fix_schema_and_reload.sql).");
+             throw new Error("Erreur Schéma DB (Voir message en haut)");
+          }
+
           throw new Error(`Erreur Base de données: ${dbError.message}`);
         }
+
+        console.log('[WhereIsSimon-DEBUG] DB Insert Success:', photoData.id);
 
         // Notify parent immediately
         if (onPhotoUploaded && photoData) {
@@ -194,18 +223,19 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
         }
 
         // Trigger Server-Side Processing
+        console.log('[WhereIsSimon-DEBUG] Triggering server-side processing...');
         fetch('/api/photos/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ photoId: photoData.id, imageUrl: publicUrl }),
-        }).catch(err => console.error("Async process trigger failed", err));
+        })
+        .then(res => {
+            console.log('[WhereIsSimon-DEBUG] API Process Response Status:', res.status);
+            if (!res.ok) return res.text().then(t => console.error('[WhereIsSimon-DEBUG] API Error Body:', t));
+        })
+        .catch(err => console.error("[WhereIsSimon-DEBUG] Async process trigger failed", err));
 
         setProgress(prev => ({ ...prev, [statusKey]: 'Terminé' }));
-
-        // Remove from list if successful to declutter?
-        // User wants "immediate" feedback in the gallery.
-        // We can keep it here with "Terminé" or remove it.
-        // Let's keep it to show progress until all done.
 
       } catch (error: unknown) {
         hasErrors = true;
@@ -227,6 +257,16 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
 
   return (
     <div className="space-y-4">
+      {globalError && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-md flex items-start text-red-700">
+           <TriangleAlert className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+           <div>
+             <h4 className="font-bold">Erreur de Configuration</h4>
+             <p className="text-sm mt-1">{globalError}</p>
+           </div>
+        </div>
+      )}
+
       <div
         className={`border-2 border-dashed rounded-lg p-8 text-center transition ${
           dragActive ? 'border-indigo-600 bg-indigo-50' : 'border-gray-300'
