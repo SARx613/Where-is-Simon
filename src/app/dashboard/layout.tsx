@@ -5,6 +5,9 @@ import { Camera, LayoutDashboard, Settings, LogOut, CreditCard } from 'lucide-re
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
+import { Menu, X as XIcon } from 'lucide-react';
+import { useState } from 'react';
+
 export default function DashboardLayout({
   children,
 }: {
@@ -12,6 +15,7 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const supabase = createClient();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -20,13 +24,24 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-gray-100">
+      {/* Mobile Sidebar Toggle */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-white shadow p-4 z-20 flex justify-between items-center">
+        <h1 className="text-xl font-bold text-indigo-600">WhereIsSimon</h1>
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-md hover:bg-gray-100">
+          {sidebarOpen ? <XIcon /> : <Menu />}
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-md flex flex-col">
-        <div className="p-6">
+      <aside className={`
+        fixed inset-y-0 left-0 z-10 w-64 bg-white shadow-md flex flex-col transform transition-transform duration-200 ease-in-out md:translate-x-0 md:relative
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="p-6 hidden md:block">
           <h1 className="text-2xl font-bold text-indigo-600">WhereIsSimon</h1>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2">
+        <nav className="flex-1 px-4 space-y-2 mt-16 md:mt-0">
           <Link href="/dashboard" className="flex items-center space-x-2 p-3 text-gray-700 hover:bg-indigo-50 rounded-lg">
             <LayoutDashboard size={20} />
             <span>Vue d&apos;ensemble</span>
@@ -61,9 +76,17 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-8">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8">
         {children}
       </main>
+
+      {/* Overlay for mobile sidebar */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-0 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
     </div>
   );
 }

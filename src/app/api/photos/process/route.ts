@@ -3,11 +3,11 @@ import { createClient } from '@/lib/supabase';
 import * as faceapi from 'face-api.js';
 import { Canvas, Image, ImageData, loadImage } from 'canvas';
 import path from 'path';
-import fs from 'fs';
 
 // Patch face-api.js environment for Node.js
 // Use try-catch to avoid issues in environments where canvas might not load properly or env check fails
 try {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   faceapi.env.monkeyPatch({ Canvas: Canvas as any, Image: Image as any, ImageData: ImageData as any });
 } catch (e) {
   console.warn("Failed to monkeyPatch face-api.js env:", e);
@@ -50,6 +50,7 @@ export async function POST(req: Request) {
 
     // Detect faces
     const detections = await faceapi
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .detectAllFaces(img as any, new faceapi.SsdMobilenetv1Options())
       .withFaceLandmarks()
       .withFaceDescriptors();
@@ -73,11 +74,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, facesFound: detections.length });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Processing Error:", error);
     // Try to update status to error
     // const supabase = createClient();
     // await supabase.from('photos').update({ status: 'error' }).eq('id', photoId);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }
