@@ -24,9 +24,18 @@ async function loadModels() {
     return;
   }
   console.log('[WhereIsSimon-DEBUG-SERVER] Loading models from:', MODEL_PATH);
-  await faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_PATH);
-  await faceapi.nets.faceLandmark68Net.loadFromDisk(MODEL_PATH);
-  await faceapi.nets.faceRecognitionNet.loadFromDisk(MODEL_PATH);
+
+  // Use a timeout for model loading to prevent hangs
+  const loadPromise = Promise.all([
+    faceapi.nets.ssdMobilenetv1.loadFromDisk(MODEL_PATH),
+    faceapi.nets.faceLandmark68Net.loadFromDisk(MODEL_PATH),
+    faceapi.nets.faceRecognitionNet.loadFromDisk(MODEL_PATH)
+  ]);
+
+  const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Model loading timeout")), 10000));
+
+  await Promise.race([loadPromise, timeoutPromise]);
+
   modelsLoaded = true;
   console.log('[WhereIsSimon-DEBUG-SERVER] Models loaded successfully');
 }
@@ -34,8 +43,12 @@ async function loadModels() {
 export async function POST(req: Request) {
   console.log('[WhereIsSimon-DEBUG-SERVER] Received POST request to /api/photos/process');
 
+  let currentPhotoId: string | null = null;
+  let supabaseAdmin: ReturnType<typeof createServerClient> | null = null;
+
   try {
     const { photoId, imageUrl } = await req.json();
+    currentPhotoId = photoId;
     console.log('[WhereIsSimon-DEBUG-SERVER] Payload:', { photoId, imageUrl });
 
     if (!photoId || !imageUrl) {
@@ -69,6 +82,8 @@ export async function POST(req: Request) {
       }
     );
 
+    supabaseAdmin = supabase; // Keep reference for error block
+
     // Verify User (Optional but good for debugging RLS)
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -83,7 +98,10 @@ export async function POST(req: Request) {
 
     if (updateError) {
        console.error('[WhereIsSimon-DEBUG-SERVER] Failed to update status to processing:', updateError);
-       // Continue anyway? The column might be missing, but we still want to analyze.
+       // Check specifically for column missing
+       if (updateError.message.includes("Could not find the 'status' column")) {
+         throw new Error("CRITICAL DB ERROR: Missing 'status' column. Please run migration script.");
+       }
     }
 
     // Load models
@@ -94,13 +112,20 @@ export async function POST(req: Request) {
     const img = await loadImage(imageUrl);
     console.log('[WhereIsSimon-DEBUG-SERVER] Image loaded. Dimensions:', img.width, 'x', img.height);
 
-    // Detect faces
+    // Detect faces with timeout
     console.log('[WhereIsSimon-DEBUG-SERVER] Detecting faces...');
-    const detections = await faceapi
+
+    const detectionPromise = faceapi
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .detectAllFaces(img as any, new faceapi.SsdMobilenetv1Options())
       .withFaceLandmarks()
       .withFaceDescriptors();
+
+    const detectionTimeout = new Promise<faceapi.WithFaceDescriptor<faceapi.WithFaceLandmarks<{ detection: faceapi.FaceDetection }, faceapi.FaceLandmarks68>>[]>((_, reject) =>
+        setTimeout(() => reject(new Error("Face detection timeout")), 20000)
+    );
+
+    const detections = await Promise.race([detectionPromise, detectionTimeout]);
 
     console.log('[WhereIsSimon-DEBUG-SERVER] Faces detected:', detections.length);
 
@@ -119,6 +144,9 @@ export async function POST(req: Request) {
       const { error: facesError } = await supabase.from('photo_faces').insert(faces);
       if (facesError) {
           console.error('[WhereIsSimon-DEBUG-SERVER] Failed to insert faces:', facesError);
+          // Don't fail the whole process if just face insert fails? Or maybe yes.
+          // Let's mark as ready but log error.
+          // actually if face insert fails, maybe we should mark as error?
           throw new Error(`DB Error inserting faces: ${facesError.message}`);
       }
     }
@@ -133,6 +161,16 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("[WhereIsSimon-DEBUG-SERVER] Processing Error:", error);
+
+    // Try to update status to error to unblock UI
+    if (currentPhotoId && supabaseAdmin) {
+        try {
+            console.log('[WhereIsSimon-DEBUG-SERVER] Setting photo status to error...');
+            await supabaseAdmin.from('photos').update({ status: 'error' }).eq('id', currentPhotoId);
+        } catch (e) {
+            console.error('[WhereIsSimon-DEBUG-SERVER] Failed to set error status:', e);
+        }
+    }
 
     return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
