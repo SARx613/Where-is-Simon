@@ -1,88 +1,105 @@
 # Where is Simon? 📸
 
-Plateforme SaaS pour photographes d'événements avec reconnaissance faciale.
+Plateforme SaaS pour photographes d'evenements avec reconnaissance faciale.
 
-## Fonctionnalités
+## Vision produit
 
-- **Reconnaissance Faciale (ML)** : Upload et matching instantané via `face-api.js` et `pgvector`.
-- **Rôles Multiples** : Admin, Photographe, Propriétaire, Invité.
-- **Modèle Économique** : 3 Tiers (Starter, Pro, Premium).
-- **Interface Invité** : "Where is Simon?" pour retrouver ses photos.
+Le produit aide chaque invite a retrouver automatiquement ses photos dans des evenements volumineux (mariage, bar mitzvah, gala), puis ouvre des options business pour le photographe: ventes, upsell et services premium.
 
-## Configuration Technique
+## Stack
 
-### Pré-requis
+- Next.js App Router + React + TypeScript
+- Supabase (Auth, Postgres, Storage, RLS)
+- `pgvector` + `face-api.js`
+- Stripe pour facturation et checkout
+
+## Demarrage rapide
+
+### Prerequis
 
 1. Node.js 20+
-2. Compte Supabase (avec extension `vector` activée)
-3. Compte Stripe (pour les paiements)
+2. Projet Supabase
+3. Compte Stripe
 
 ### Installation
 
-1. Cloner le repo :
-   ```bash
-   git clone <url>
-   cd where-is-simon
-   ```
-2. Installer les dépendances :
-   ```bash
-   npm install
-   ```
-3. Configurer les variables d'environnement `.env.local` :
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=votre_url_supabase
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=votre_cle_anon
-   ```
+```bash
+npm install
+```
 
-### Base de Données (Supabase)
+### Variables d'environnement
 
-Exécutez le script SQL situé dans `supabase/schema.sql` dans l'éditeur SQL de votre dashboard Supabase.
-Cela créera :
-- Les tables (`events`, `photos`, `photo_faces`, etc.)
-- Les types ENUM
-- Les fonctions RPC (`match_face_photos_v2`)
-- Les politiques de sécurité (RLS)
+`.env.local`:
 
-### Procédure Machine Learning (Reconnaissance Faciale)
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+STRIPE_SECRET_KEY=<stripe-secret-key>
+```
 
-Le système utilise `face-api.js` côté client pour générer les embeddings.
+### Base Supabase (source unique)
 
-1. **Upload (Dashboard Photographe)** :
-   - Lorsqu'une photo est déposée, le modèle `ssdMobilenetv1` détecte tous les visages.
-   - Pour chaque visage, un embedding (vecteur de 128 nombres) est calculé.
-   - La photo est uploadée sur Supabase Storage.
-   - Les métadonnées de la photo et les embeddings des visages sont stockés dans `photos` et `photo_faces`.
+Le schema SQL canonique est:
 
-2. **Recherche (Invité)** :
-   - L'invité prend un selfie.
-   - Un embedding est calculé localement.
-   - Une requête RPC `match_face_photos_v2` est envoyée à Supabase.
-   - La base de données compare le vecteur du selfie avec ceux stockés via la distance Cosine.
-   - Les photos correspondantes sont renvoyées.
+1. `supabase/migrations/20260101000000_initial_schema.sql`
+2. `supabase/migrations/20260102000000_add_vector_index.sql` (optionnel, apres volume de donnees)
 
-Les modèles ML sont stockés dans `public/models`.
+`supabase/schema.sql` est desormais un fichier pointeur (non source de verite).
 
-### Configuration des Webhooks Stripe
+## Flux principal ML
 
-Pour gérer les abonnements et les achats de tirages :
+1. Le photographe upload des photos dans le dashboard.
+2. L'API `/api/photos/process` detecte les visages et enregistre les embeddings dans `photo_faces`.
+3. L'invite prend un selfie, un embedding est calcule cote client.
+4. L'app appelle `match_face_photos_v2` pour trouver les meilleurs matchs.
 
-1. Aller dans le Dashboard Stripe > Developers > Webhooks.
-2. Ajouter un endpoint pointant vers `https://votre-domaine.com/api/webhooks/stripe`.
-3. Sélectionner les événements à écouter :
-   - `checkout.session.completed` : Pour valider un paiement (abonnement ou tirage).
-   - `customer.subscription.updated` : Pour mettre à jour le statut d'un abonnement.
-   - `customer.subscription.deleted` : Pour gérer les annulations.
+## Securite et architecture
 
-(Note : L'implémentation de l'API route `/api/webhooks/stripe` est à faire selon vos besoins spécifiques de business logic).
+- Validation Zod sur les endpoints critiques (`checkout`, `photos/process`)
+- Auth/Authz forcees sur routes sensibles
+- RLS durcie sur les tables metier
+- Couches applicatives introduites:
+  - `src/services/*` (logique metier)
+  - `src/hooks/*` (etat/react)
+  - `src/lib/validation/*`, `src/lib/env.ts`, `src/lib/logger.ts`
 
-## Déploiement
+## Qualite
 
-Le workflow GitHub Actions (`.github/workflows/ci.yml`) vérifie le build à chaque push.
-Pour déployer :
-- **Vercel** (Recommandé) : Connectez votre repo GitHub à Vercel. La configuration est automatique. Ajoutez les variables d'environnement `NEXT_PUBLIC_SUPABASE_URL` et `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+```bash
+npm run lint
+npm run test
+npm run build
+```
 
-**Important : Configuration Auth**
-Consultez le fichier [INSTRUCTIONS_AUTH.md](./INSTRUCTIONS_AUTH.md) pour configurer la connexion Google avec Supabase.
+Le workflow CI (`.github/workflows/ci.yml`) execute lint + tests + build.
+
+## Backlog produit priorise
+
+### MVP (impact fort / delai court)
+
+1. Onboarding selfie via QR a l'entree de l'evenement
+2. Mode vie privee (masquer/signaler une photo)
+3. Notifications "you've been spotted"
+
+### Growth (retention / monetisation)
+
+1. Livre d'or digital (texte + vocal)
+2. Selection album par likes
+3. Statistiques de popularite des photos
+4. Partage social optimise avec tags pre-remplis
+
+### Premium (upsell avancé)
+
+1. Upselling tirages (integration impression)
+2. Archive cloud long terme (10-20 ans)
+3. Gestion contrats/paiements photographe
+4. Reels auto-generes par IA
+
+Roadmap detaillee: `docs/product-roadmap.md`.
+
+## Notes historiques SQL
+
+Voir `supabase/LEGACY_NOTES.md` pour la consolidation des anciens scripts.
 
 ## Licence
 

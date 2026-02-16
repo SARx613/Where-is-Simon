@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import PhotoUpload from '@/components/PhotoUpload';
 import { Calendar, MapPin, Image as ImageIcon, Loader, RefreshCw, AlertTriangle } from 'lucide-react';
+import { getEventById } from '@/services/events.service';
+import { listPhotosForEvent } from '@/services/photos.service';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type Photo = Database['public']['Tables']['photos']['Row'];
@@ -24,22 +26,13 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
 
   // Define loadData using useCallback to be stable and reusable
   const loadData = async () => {
-    // Load Event
-    const { data: eventData } = await supabase
-      .from('events')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const { data: eventData } = await getEventById(supabase, id);
 
     if (eventData) {
       setEvent(eventData);
 
       // Load Photos
-      const { data: photosData } = await supabase
-        .from('photos')
-        .select('*')
-        .eq('event_id', id)
-        .order('created_at', { ascending: false });
+      const { data: photosData } = await listPhotosForEvent(supabase, id);
 
       if (photosData) {
         setPhotos(photosData);
@@ -79,7 +72,6 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
         setTimeout(loadData, 2000);
      } catch (e) {
          console.error("Retry failed:", e);
-         alert("Échec de la relance. Vérifiez les logs.");
          loadData(); // Revert
      }
   };

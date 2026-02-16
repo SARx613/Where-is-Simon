@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Camera, LayoutDashboard, Settings, LogOut, CreditCard } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { signOut } from '@/services/auth.service';
 
 import { Menu, X as XIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -18,7 +19,7 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut(supabase);
     router.push('/login');
   };
 

@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import SelfieCapture from '@/components/SelfieCapture';
 import { Download, Share2, AlertTriangle } from 'lucide-react';
+import { FACE_MATCH_COUNT, FACE_MATCH_THRESHOLD } from '@/lib/constants';
+import { getEventBySlug } from '@/services/events.service';
+import { matchFacePhotos } from '@/services/photos.service';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type Photo = {
@@ -22,6 +25,7 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'none' | 'grayscale' | 'sepia'>('none');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
@@ -29,14 +33,11 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
       // Decode slug just in case
       const decodedSlug = decodeURIComponent(slug);
 
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('slug', decodedSlug)
-        .single();
+      const { data, error } = await getEventBySlug(supabase, decodedSlug);
 
       if (error) {
         console.error("Error loading event:", error);
+        setErrorMessage('Impossible de charger cet événement.');
       }
 
       if (data) setEvent(data);
@@ -48,36 +49,21 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
   const handleFaceDetected = async (descriptor: Float32Array) => {
     if (!event) return;
     setSearching(true);
+    setErrorMessage(null);
 
     // Convert Float32Array to number[]
     const embedding = Array.from(descriptor);
 
-    // Call RPC
-    // Note: match_threshold is distance. Lower is better match.
-    // 0.6 is a common threshold for face-api.js (Euclidean distance),
-    // but pgvector using cosine distance might range differently.
-    // face-api.js descriptors are normalized? Yes.
-    // <-> operator in pgvector is Euclidean distance (L2).
-    // <=> is Cosine distance.
-    // face-api.js usually recommends Euclidean distance < 0.6.
-    // Let's assume our RPC uses <=> (Cosine).
-    // For normalized vectors, Euclidean distance and Cosine distance are related.
-    // Let's try a threshold of 0.5 similarity (1 - distance).
-    // Wait, my RPC returns `1 - (embedding <=> query)`.
-    // If distance is small (0), similarity is 1.
-    // If distance is large (1), similarity is 0.
-    // I should check what my RPC does.
-
-    const { data, error } = await supabase.rpc('match_face_photos_v2', {
+    const { data, error } = await matchFacePhotos(supabase, {
       query_embedding: embedding,
-      match_threshold: 0.4, // Similarity > 0.4 (Adjust based on testing)
-      match_count: 50,
+      match_threshold: FACE_MATCH_THRESHOLD,
+      match_count: FACE_MATCH_COUNT,
       filter_event_id: event.id
     });
 
     if (error) {
       console.error(error);
-      alert('Erreur lors de la recherche.');
+      setErrorMessage('Erreur lors de la recherche.');
     } else {
       setMatches(data || []);
       setHasSearched(true);
@@ -111,6 +97,7 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
             <SelfieCapture onDescriptorComputed={handleFaceDetected} />
 
             {searching && <p className="text-indigo-600 font-medium">Recherche de vos photos...</p>}
+            {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
           </div>
         ) : (
           <div>

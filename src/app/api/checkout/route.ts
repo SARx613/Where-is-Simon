@@ -1,24 +1,29 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-
-// Use a placeholder key if env var is missing during build time to prevent build crash
-// The actual key is needed at runtime.
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiVersion: '2025-01-27.acacia' as any,
-});
+import { checkoutSchema } from '@/lib/validation/checkout.schema';
+import { env } from '@/lib/env';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { AppError, errorResponse } from '@/lib/errors';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: Request) {
   try {
-    const { priceId, successUrl, cancelUrl } = await req.json();
+    const body = await req.json();
+    const { priceId, successUrl, cancelUrl } = checkoutSchema.parse(body);
 
-    if (!priceId) {
-      return NextResponse.json({ error: 'Price ID required' }, { status: 400 });
-    }
+    const supabase = await createSupabaseServerClient();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) throw new AppError('Unauthorized', 401);
 
-    // In a real app, verify user session here
-    // const supabase = createRouteHandlerClient(...)
-    // const { data: { user } } = await supabase.auth.getUser()
+    const success = new URL(successUrl);
+    const cancel = new URL(cancelUrl);
+    if (success.origin !== cancel.origin) throw new AppError('Invalid redirect URLs', 400);
+    if (!env.STRIPE_SECRET_KEY) throw new AppError('Missing STRIPE_SECRET_KEY', 500);
+
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      apiVersion: '2025-01-27.acacia' as any,
+    });
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -28,16 +33,15 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      mode: 'subscription', // or 'payment' for one-time
+      mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      // customer_email: user.email // Pre-fill email
+      customer_email: authData.user.email,
     });
 
     return NextResponse.json({ sessionId: session.id, url: session.url });
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Stripe error:', err);
-    return NextResponse.json({ error: errorMsg }, { status: 500 });
+    logger.error('Stripe checkout error', { err });
+    return errorResponse(err);
   }
 }

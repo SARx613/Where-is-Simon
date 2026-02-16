@@ -12,11 +12,13 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
   const [mode, setMode] = useState<'initial' | 'camera' | 'upload'>('initial');
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Camera Logic
   const startCamera = async () => {
+    setErrorMessage(null);
     setMode('camera');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -25,7 +27,7 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
       }
     } catch (err) {
       console.error("Camera error", err);
-      alert("Impossible d'accéder à la caméra.");
+      setErrorMessage("Impossible d'accéder à la caméra.");
       setMode('initial');
     }
   };
@@ -68,6 +70,7 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
   };
 
   const processImage = async (dataUrl: string) => {
+    setErrorMessage(null);
     setLoading(true);
     const img = new Image();
     img.src = dataUrl;
@@ -78,13 +81,13 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
       if (descriptor) {
         onDescriptorComputed(descriptor, dataUrl);
       } else {
-        alert("Aucun visage détecté. Essayez une autre photo.");
+        setErrorMessage("Aucun visage détecté. Essayez une autre photo.");
         setImage(null);
         if (mode === 'camera') startCamera();
       }
     } catch (error) {
       console.error(error);
-      alert("Erreur lors de l'analyse.");
+      setErrorMessage("Erreur lors de l'analyse.");
     } finally {
       setLoading(false);
     }
@@ -125,6 +128,7 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
 
       {mode === 'initial' && (
         <div className="space-y-4">
+          {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
           <button
             onClick={startCamera}
             className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 flex items-center justify-center transition"

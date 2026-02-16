@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // scripts/test-face-api.js
 const faceapi = require('face-api.js');
-const { Canvas, Image, ImageData, loadImage } = require('canvas');
+const { Canvas, Image, ImageData } = require('canvas');
 const path = require('path');
 const fs = require('fs');
 

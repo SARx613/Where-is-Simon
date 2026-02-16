@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { createEventViaRpc } from '@/services/events.service';
+import { createEventSchema } from '@/lib/validation/event.schema';
 
 export default function NewEventPage() {
   const router = useRouter();
@@ -16,6 +18,7 @@ export default function NewEventPage() {
     tier: 'starter',
     slug: ''
   });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -30,6 +33,7 @@ export default function NewEventPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMessage(null);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -37,15 +41,15 @@ export default function NewEventPage() {
       if (!user) throw new Error('Vous devez être connecté');
 
       // Use RPC V3 to bypass potential PGRST205 cache issues
-      const { data, error } = await supabase.rpc('create_event_v3', {
+      const payload = createEventSchema.parse({
         name: formData.name,
         slug: formData.slug || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
         date: formData.date,
         location: formData.location,
         description: formData.description,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tier: formData.tier as any
+        tier: formData.tier
       });
+      const { data, error } = await createEventViaRpc(supabase, payload);
 
       if (error) {
         console.error("Supabase Error:", error);
@@ -58,7 +62,7 @@ export default function NewEventPage() {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erreur inconnue";
       console.error("Creation failed:", error);
-      alert('Erreur lors de la création : ' + msg);
+      setErrorMessage('Erreur lors de la création : ' + msg);
     } finally {
       setLoading(false);
     }
@@ -69,6 +73,7 @@ export default function NewEventPage() {
       <h2 className="text-2xl font-bold text-gray-800 mb-6">Créer un nouvel événement</h2>
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md space-y-6">
+        {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l&apos;événement</label>
           <input

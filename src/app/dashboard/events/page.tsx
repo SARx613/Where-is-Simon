@@ -1,40 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase';
 import { Plus, Calendar, MapPin } from 'lucide-react';
-import { Database } from '@/types/supabase';
-
-type Event = Database['public']['Tables']['events']['Row'];
+import { useAuth } from '@/hooks/useAuth';
+import { useEvents } from '@/hooks/useEvents';
 
 export default function EventsPage() {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  const { userId, loading: authLoading } = useAuth();
+  const { events, loading, load } = useEvents();
 
   useEffect(() => {
-    async function loadEvents() {
-      // In a real app, we would get the current user ID and filter
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (user) {
-        const { data } = await supabase
-          .from('events')
-          .select('*')
-          .eq('photographer_id', user.id)
-          .order('date', { ascending: false });
-
-        if (data) setEvents(data);
-      } else {
-        // For MVP demo without auth flow fully working yet, fetch public events or just empty
-        // console.log("No user logged in");
+    async function loadEventsForUser() {
+      if (!userId) return;
+      try {
+        await load(userId);
+      } catch (error) {
+        console.error('Failed to load events', error);
       }
-      setLoading(false);
     }
-
-    loadEvents();
-  }, [supabase]);
+    loadEventsForUser();
+  }, [load, userId]);
 
   return (
     <div>
@@ -49,7 +35,7 @@ export default function EventsPage() {
         </Link>
       </div>
 
-      {loading ? (
+      {(loading || authLoading) ? (
         <div className="text-center py-10">Chargement...</div>
       ) : events.length === 0 ? (
         <div className="bg-white p-10 rounded-lg shadow-sm text-center">
