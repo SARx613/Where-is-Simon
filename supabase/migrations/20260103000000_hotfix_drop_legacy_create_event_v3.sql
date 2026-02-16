@@ -15,3 +15,6 @@ commit;
 -- from pg_proc p
 -- join pg_namespace n on n.oid = p.pronamespace
 -- where n.nspname = 'public' and p.proname = 'create_event_v3';
+--
+-- Expected single row:
+-- create_event_v3 | name text, slug text, date text, location text, description text, tier text

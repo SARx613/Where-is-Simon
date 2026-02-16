@@ -59,6 +59,24 @@ export default function NewEventPage() {
         tier: payload.tier,
       });
       const { data, error } = await createEventViaRpc(supabase, payload);
+      const rpcDebugPayload = {
+        request: {
+          name: payload.name,
+          slug: payload.slug,
+          date: payload.date,
+          location: payload.location,
+          tier: payload.tier,
+        },
+        response: {
+          data,
+          error: error ? {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          } : null,
+        },
+      };
 
       if (error) {
         console.error('[NewEventPage] Supabase RPC error', {
@@ -68,12 +86,7 @@ export default function NewEventPage() {
           hint: error.hint,
           full: error,
         });
-        setDebugInfo(JSON.stringify({
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-        }, null, 2));
+        setDebugInfo(JSON.stringify(rpcDebugPayload, null, 2));
         throw new Error(error.message + " (" + error.code + ")");
       }
 
@@ -88,6 +101,13 @@ export default function NewEventPage() {
 
       if (publishError) {
         console.warn('[NewEventPage] Could not auto-publish event', publishError);
+        setDebugInfo(JSON.stringify({
+          code: publishError.code,
+          message: publishError.message,
+          details: publishError.details,
+          hint: publishError.hint,
+        }, null, 2));
+        setErrorMessage("L'événement a été créé mais pas publié automatiquement. Tu peux le publier dans Paramètres.");
       }
 
       router.push(`/dashboard/events/${eventId}`);
