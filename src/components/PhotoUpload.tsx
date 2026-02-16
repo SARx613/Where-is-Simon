@@ -8,7 +8,7 @@ import heic2any from 'heic2any';
 import { IMAGE_MAX_SIZE } from '@/lib/constants';
 import { logger } from '@/lib/logger';
 import { createPhoto } from '@/services/photos.service';
-import { getAllFaceDescriptors } from '@/lib/face-rec';
+import { getAllFaceDescriptors, getFaceDescriptor } from '@/lib/face-rec';
 
 type Photo = Database['public']['Tables']['photos']['Row'];
 
@@ -166,13 +166,28 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
 
     try {
       const detections = await getAllFaceDescriptors(image);
-      return detections.map((d) => ({
+      const allFaces = detections.map((d) => ({
         embedding: Array.from(d.descriptor),
         box_x: Math.round(d.detection.box.x),
         box_y: Math.round(d.detection.box.y),
         box_width: Math.round(d.detection.box.width),
         box_height: Math.round(d.detection.box.height),
       }));
+
+      if (allFaces.length > 0) return allFaces;
+
+      // Fallback for difficult frames: try single-face extraction.
+      const single = await getFaceDescriptor(image);
+      if (!single) return [];
+      return [
+        {
+          embedding: Array.from(single),
+          box_x: 0,
+          box_y: 0,
+          box_width: image.naturalWidth,
+          box_height: image.naturalHeight,
+        },
+      ];
     } finally {
       URL.revokeObjectURL(imageUrl);
     }
@@ -196,6 +211,9 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
         setProgress(prev => ({ ...prev, [statusKey]: 'Analyse visage...' }));
         const faces = await detectFacesInBrowser(fileToUpload);
         logger.info('Face detection completed in browser', { file: file.name, faces: faces.length });
+        if (faces.length === 0) {
+          logger.warn('No faces detected for photo', { file: file.name });
+        }
 
         // Upload to Storage
         setProgress(prev => ({ ...prev, [statusKey]: 'Upload...' }));

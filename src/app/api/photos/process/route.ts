@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     if (payload.faces.length > 0) {
       const faces = payload.faces.map((d) => ({
         photo_id: payload.photoId,
-        embedding: d.embedding,
+        embedding: `[${d.embedding.join(',')}]`,
         box_x: d.box_x,
         box_y: d.box_y,
         box_width: d.box_width,
@@ -77,6 +77,8 @@ export async function POST(req: Request) {
 
       const { error: insertError } = await supabase.from('photo_faces').insert(faces);
       if (insertError) throw new AppError(`Failed to save face embeddings: ${insertError.message}`, 500);
+    } else {
+      logger.warn('No face descriptors received for photo', { photoId: payload.photoId });
     }
 
     await supabase.from('photos').update({ status: 'ready' }).eq('id', payload.photoId);

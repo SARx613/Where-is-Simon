@@ -89,7 +89,8 @@ create table public.photos (
   height integer check (height is null or height > 0),
   original_name text,
   is_hidden boolean not null default false,
-  status public.photo_status not null default 'processing'
+  status public.photo_status not null default 'processing',
+  display_order integer
 );
 
 create table public.photo_faces (
@@ -167,6 +168,7 @@ create index idx_events_owner_id on public.events(owner_id) where owner_id is no
 create index idx_events_is_public on public.events(is_public) where is_public = true;
 create index idx_photos_event_id on public.photos(event_id);
 create index idx_photos_status on public.photos(status);
+create index idx_photos_event_display_order on public.photos(event_id, display_order);
 create index idx_photo_faces_photo_id on public.photo_faces(photo_id);
 create index idx_orders_event_id on public.orders(event_id);
 create index idx_order_items_order_id on public.order_items(order_id);

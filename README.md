@@ -35,6 +35,8 @@ npm install
 NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 STRIPE_SECRET_KEY=<stripe-secret-key>
+NEXT_PUBLIC_STRIPE_PRICE_PRO=<price_xxx>
+NEXT_PUBLIC_STRIPE_PRICE_PREMIUM=<price_xxx>
 ```
 
 ### Base Supabase (source unique)
@@ -43,10 +45,11 @@ Le schema SQL canonique est:
 
 1. `supabase/migrations/20260101000000_initial_schema.sql`
 2. `supabase/migrations/20260102000000_add_vector_index.sql` (optionnel, apres volume de donnees)
+3. `supabase/migrations/20260201000000_add_photo_display_order.sql` (recommande pour drag & drop de la galerie)
 
 Si votre projet existait deja avant cette refonte et que vous voyez `PGRST203` sur `create_event_v3`, executez aussi:
 
-3. `supabase/migrations/20260103000000_hotfix_drop_legacy_create_event_v3.sql` (one-shot hotfix)
+4. `supabase/migrations/20260103000000_hotfix_drop_legacy_create_event_v3.sql` (one-shot hotfix)
 
 `supabase/schema.sql` est desormais un fichier pointeur (non source de verite).
 

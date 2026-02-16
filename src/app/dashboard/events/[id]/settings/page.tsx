@@ -19,6 +19,7 @@ export default function EventSettingsPage({ params }: { params: Promise<{ id: st
     enable_downloads: false,
     price_per_photo: 0,
     is_public: false,
+    status: 'draft' as 'draft' | 'published' | 'archived',
     slug: ''
   });
 
@@ -34,6 +35,7 @@ export default function EventSettingsPage({ params }: { params: Promise<{ id: st
           enable_downloads: data.enable_downloads ?? false,
           price_per_photo: data.price_per_photo || 0,
           is_public: data.is_public ?? false,
+          status: (data.status as 'draft' | 'published' | 'archived') || 'draft',
           slug: data.slug
         });
       }
@@ -98,6 +100,21 @@ export default function EventSettingsPage({ params }: { params: Promise<{ id: st
             </a>
           </div>
           <div className="flex-[2] space-y-4">
+            <label className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+              <div>
+                <span className="text-gray-700 block">Statut de publication</span>
+                <span className="text-xs text-gray-500">Publié = visible invité. Brouillon = privé en préparation.</span>
+              </div>
+              <select
+                value={settings.status}
+                onChange={(e) => setSettings({ ...settings, status: e.target.value as 'draft' | 'published' | 'archived' })}
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+              >
+                <option value="draft">Brouillon</option>
+                <option value="published">Publié</option>
+                <option value="archived">Archivé</option>
+              </select>
+            </label>
             <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
               <span className="text-gray-700">Galerie Publique (visible sans selfie)</span>
               <input

@@ -5,12 +5,19 @@ import { createClient } from '@/lib/supabase';
 import type { Database } from '@/types/supabase';
 
 type Order = Database['public']['Tables']['orders']['Row'];
+const PRO_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO;
+const PREMIUM_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRICE_PREMIUM;
+
+function isConfiguredPrice(priceId: string | undefined) {
+  return Boolean(priceId && priceId.startsWith('price_') && !priceId.includes('example'));
+}
 
 export default function BillingPage() {
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +66,13 @@ export default function BillingPage() {
   }, [orders]);
 
   const handleSubscribe = async (priceId: string) => {
+    if (!isConfiguredPrice(priceId)) {
+      setCheckoutError('Prix Stripe non configuré. Ajoute NEXT_PUBLIC_STRIPE_PRICE_PRO et NEXT_PUBLIC_STRIPE_PRICE_PREMIUM dans Vercel/ENV.');
+      return;
+    }
+
     setLoading(true);
+    setCheckoutError(null);
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -75,12 +88,12 @@ export default function BillingPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        if (data.error) alert('Erreur Stripe (Configurer API Keys): ' + data.error);
-        else alert('Erreur inconnue');
+        if (data.error) setCheckoutError(`Erreur Stripe: ${data.error}`);
+        else setCheckoutError('Erreur inconnue lors du checkout');
       }
     } catch (error) {
       console.error(error);
-      alert('Erreur réseau');
+      setCheckoutError('Erreur réseau');
     } finally {
       setLoading(false);
     }
@@ -106,6 +119,7 @@ export default function BillingPage() {
       </div>
 
       {loadError && <p className="text-sm text-red-600 mb-4">Erreur statistiques: {loadError}</p>}
+      {checkoutError && <p className="text-sm text-red-600 mb-4">{checkoutError}</p>}
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="p-6 border-b border-gray-200">
@@ -127,11 +141,11 @@ export default function BillingPage() {
                <p className="text-sm text-gray-600">29€ / mois - Plus de stockage, Branding, Ventes</p>
              </div>
              <button
-               onClick={() => handleSubscribe('price_pro_example_id')}
-               disabled={loading}
+               onClick={() => handleSubscribe(PRO_PRICE_ID || '')}
+               disabled={loading || !isConfiguredPrice(PRO_PRICE_ID)}
                className="bg-indigo-600 text-white px-4 py-2 rounded text-sm hover:bg-indigo-700 disabled:opacity-50"
              >
-               {loading ? '...' : 'Mettre à niveau'}
+               {loading ? '...' : isConfiguredPrice(PRO_PRICE_ID) ? 'Mettre à niveau' : 'Configurer le prix'}
              </button>
           </div>
 
@@ -141,11 +155,11 @@ export default function BillingPage() {
                <p className="text-sm text-gray-600">99€ / mois - Illimité, 0% Commission</p>
              </div>
              <button
-               onClick={() => handleSubscribe('price_premium_example_id')}
-               disabled={loading}
+               onClick={() => handleSubscribe(PREMIUM_PRICE_ID || '')}
+               disabled={loading || !isConfiguredPrice(PREMIUM_PRICE_ID)}
                className="text-indigo-600 border border-indigo-600 px-4 py-2 rounded text-sm hover:bg-indigo-50 disabled:opacity-50"
              >
-               {loading ? '...' : 'Mettre à niveau'}
+               {loading ? '...' : isConfiguredPrice(PREMIUM_PRICE_ID) ? 'Mettre à niveau' : 'Configurer le prix'}
              </button>
           </div>
         </div>
@@ -158,7 +172,9 @@ export default function BillingPage() {
               </div>
               <button className="text-sm text-indigo-600 hover:underline">Modifier</button>
            </div>
-           <p className="text-xs text-gray-500 mt-2">Pour tester, vous devez ajouter STRIPE_SECRET_KEY dans .env.local et remplacer les IDs de prix.</p>
+           <p className="text-xs text-gray-500 mt-2">
+             Ajoute `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PRICE_PRO`, `NEXT_PUBLIC_STRIPE_PRICE_PREMIUM` dans l&apos;environnement.
+           </p>
         </div>
       </div>
 

@@ -2,16 +2,20 @@ import * as faceapi from 'face-api.js';
 
 // Configuration for the models
 const MODEL_URL = '/models';
-const MAX_DETECTION_SIZE = 640;
+const MAX_DETECTION_SIZE_SINGLE = 640;
+const MAX_DETECTION_SIZE_MULTI = 1400;
 
-function prepareDetectionInput(imageElement: HTMLImageElement | HTMLVideoElement): HTMLImageElement | HTMLVideoElement | HTMLCanvasElement {
+function prepareDetectionInput(
+  imageElement: HTMLImageElement | HTMLVideoElement,
+  maxDetectionSize: number
+): HTMLImageElement | HTMLVideoElement | HTMLCanvasElement {
   const width = imageElement instanceof HTMLVideoElement ? imageElement.videoWidth : imageElement.naturalWidth;
   const height = imageElement instanceof HTMLVideoElement ? imageElement.videoHeight : imageElement.naturalHeight;
 
   if (!width || !height) return imageElement;
-  if (Math.max(width, height) <= MAX_DETECTION_SIZE) return imageElement;
+  if (Math.max(width, height) <= maxDetectionSize) return imageElement;
 
-  const scale = MAX_DETECTION_SIZE / Math.max(width, height);
+  const scale = maxDetectionSize / Math.max(width, height);
   const targetWidth = Math.max(1, Math.round(width * scale));
   const targetHeight = Math.max(1, Math.round(height * scale));
 
@@ -40,7 +44,7 @@ export async function loadFaceModels() {
 export async function getFaceDescriptor(imageElement: HTMLImageElement | HTMLVideoElement): Promise<Float32Array | undefined> {
   // Ensure models are loaded
   await loadFaceModels();
-  const input = prepareDetectionInput(imageElement);
+  const input = prepareDetectionInput(imageElement, MAX_DETECTION_SIZE_SINGLE);
 
   // First try: single face (fast path)
   const single = await faceapi
@@ -71,12 +75,19 @@ export async function getFaceDescriptor(imageElement: HTMLImageElement | HTMLVid
 
 export async function getAllFaceDescriptors(imageElement: HTMLImageElement): Promise<faceapi.WithFaceDescriptor<faceapi.WithFaceLandmarks<{ detection: faceapi.FaceDetection }>>[]> {
     await loadFaceModels();
-    const input = prepareDetectionInput(imageElement);
+    const input = prepareDetectionInput(imageElement, MAX_DETECTION_SIZE_MULTI);
 
-    const detections = await faceapi
-        .detectAllFaces(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 }))
+    const firstPass = await faceapi
+        .detectAllFaces(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.25 }))
         .withFaceLandmarks()
         .withFaceDescriptors();
 
-    return detections;
+    if (firstPass.length > 0) return firstPass;
+
+    const secondPass = await faceapi
+        .detectAllFaces(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 }))
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+    return secondPass;
 }

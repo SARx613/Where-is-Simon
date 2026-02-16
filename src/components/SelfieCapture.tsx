@@ -102,7 +102,7 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
     try {
       const descriptor = await Promise.race([
         getFaceDescriptor(img),
-        new Promise<undefined>((_, reject) => setTimeout(() => reject(new Error('Analyse trop longue. Réessayez avec une photo plus nette ou plus rapprochée.')), 18000)),
+        new Promise<undefined>((_, reject) => setTimeout(() => reject(new Error('Analyse trop longue. Réessayez avec une photo bien éclairée, cadrée de face et plus rapprochée.')), 25000)),
       ]);
       if (descriptor) {
         onDescriptorComputed(descriptor, dataUrl);
