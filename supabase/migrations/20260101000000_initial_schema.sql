@@ -423,7 +423,7 @@ create or replace function public.match_face_photos_v2(
   query_embedding vector(128),
   match_threshold float default 0.4,
   match_count int default 50,
-  filter_event_id uuid
+  filter_event_id uuid default null
 )
 returns table (id uuid, url text, similarity float)
 language plpgsql
@@ -431,6 +431,10 @@ security definer
 set search_path = public
 as $$
 begin
+  if filter_event_id is null then
+    raise exception 'filter_event_id is required';
+  end if;
+
   if not exists (
     select 1
     from public.events
