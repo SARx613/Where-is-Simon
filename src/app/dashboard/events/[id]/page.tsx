@@ -48,6 +48,15 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, supabase]);
 
+  useEffect(() => {
+    if (processingCount === 0) return;
+    const timer = setInterval(() => {
+      loadData();
+    }, 8000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processingCount]);
+
   const handlePhotoUploaded = (newPhoto: Photo) => {
     setPhotos(prev => [newPhoto, ...prev]);
     if (newPhoto.status === 'processing') {

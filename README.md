@@ -53,9 +53,10 @@ Si votre projet existait deja avant cette refonte et que vous voyez `PGRST203` s
 ## Flux principal ML
 
 1. Le photographe upload des photos dans le dashboard.
-2. L'API `/api/photos/process` detecte les visages et enregistre les embeddings dans `photo_faces`.
-3. L'invite prend un selfie, un embedding est calcule cote client.
-4. L'app appelle `match_face_photos_v2` pour trouver les meilleurs matchs.
+2. Le navigateur detecte les visages et calcule les embeddings.
+3. L'API `/api/photos/process` valide, persiste les embeddings dans `photo_faces` et met a jour le statut.
+4. L'invite prend un selfie, un embedding est calcule cote client.
+5. L'app appelle `match_face_photos_v2` pour trouver les meilleurs matchs.
 
 ## Securite et architecture
 

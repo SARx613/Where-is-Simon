@@ -8,6 +8,7 @@ import heic2any from 'heic2any';
 import { IMAGE_MAX_SIZE } from '@/lib/constants';
 import { logger } from '@/lib/logger';
 import { createPhoto } from '@/services/photos.service';
+import { getAllFaceDescriptors } from '@/lib/face-rec';
 
 type Photo = Database['public']['Tables']['photos']['Row'];
 
@@ -16,6 +17,14 @@ interface PhotoUploadProps {
   onUploadComplete: () => void;
   onPhotoUploaded?: (photo: Photo) => void;
 }
+
+type FacePayload = {
+  embedding: number[];
+  box_x: number;
+  box_y: number;
+  box_width: number;
+  box_height: number;
+};
 
 export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded }: PhotoUploadProps) {
   const [dragActive, setDragActive] = useState(false);
@@ -145,6 +154,30 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
     });
   };
 
+  const detectFacesInBrowser = async (file: File): Promise<FacePayload[]> => {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.src = imageUrl;
+
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("Impossible de charger l'image pour l'analyse"));
+    });
+
+    try {
+      const detections = await getAllFaceDescriptors(image);
+      return detections.map((d) => ({
+        embedding: Array.from(d.descriptor),
+        box_x: Math.round(d.detection.box.x),
+        box_y: Math.round(d.detection.box.y),
+        box_width: Math.round(d.detection.box.width),
+        box_height: Math.round(d.detection.box.height),
+      }));
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  };
+
   const uploadFiles = async () => {
     setUploading(true);
     setGlobalError(null);
@@ -160,6 +193,9 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
       try {
         // Standardize & Compress
         const { file: fileToUpload, width, height } = await processImage(file);
+        setProgress(prev => ({ ...prev, [statusKey]: 'Analyse visage...' }));
+        const faces = await detectFacesInBrowser(fileToUpload);
+        logger.info('Face detection completed in browser', { file: file.name, faces: faces.length });
 
         // Upload to Storage
         setProgress(prev => ({ ...prev, [statusKey]: 'Upload...' }));
@@ -203,17 +239,23 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
         fetch('/api/photos/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoId: photoData.id, imageUrl: publicUrl }),
+          body: JSON.stringify({ photoId: photoData.id, imageUrl: publicUrl, faces }),
         })
         .then(async (res) => {
             if (!res.ok) {
               const body = await res.text();
               logger.error('Async process trigger failed', { status: res.status, body });
+              setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: analyse serveur' }));
+              return;
             }
+            const body = await res.json();
+            logger.info('Async process trigger success', { photoId: photoData.id, facesFound: body.facesFound });
+            setProgress(prev => ({ ...prev, [statusKey]: `Terminé (${body.facesFound} visage${body.facesFound > 1 ? 's' : ''})` }));
         })
-        .catch((err) => logger.error('Async process trigger error', { err }));
-
-        setProgress(prev => ({ ...prev, [statusKey]: 'Terminé' }));
+        .catch((err) => {
+          logger.error('Async process trigger error', { err });
+          setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: analyse serveur' }));
+        });
 
       } catch (error: unknown) {
         let msg = "Erreur inconnue";
