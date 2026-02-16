@@ -197,27 +197,19 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
     setUploading(true);
     setGlobalError(null);
 
-    // Process files sequentially
     for (const file of files) {
       const statusKey = file.name;
-      // Skip if already marked done
-      if (progress[statusKey] === 'Terminé') continue;
+      if (progress[statusKey]?.startsWith('Terminé')) continue;
 
       setProgress(prev => ({ ...prev, [statusKey]: 'Compression...' }));
 
       try {
-        // Standardize & Compress
+        // 1. Compress / convert
         const { file: fileToUpload, width, height } = await processImage(file);
-        setProgress(prev => ({ ...prev, [statusKey]: 'Analyse visage...' }));
-        const faces = await detectFacesInBrowser(fileToUpload);
-        logger.info('Face detection completed in browser', { file: file.name, faces: faces.length });
-        if (faces.length === 0) {
-          logger.warn('No faces detected for photo', { file: file.name });
-        }
 
-        // Upload to Storage
+        // 2. Upload to Storage FIRST (photo is safe even if page reloads)
         setProgress(prev => ({ ...prev, [statusKey]: 'Upload...' }));
-        const fileExt = 'jpg'; // We force everything to jpg
+        const fileExt = 'jpg';
         const fileName = `${eventId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -233,42 +225,56 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
           .from('photos')
           .getPublicUrl(fileName);
 
+        // 3. Insert into DB immediately with status 'uploading'
         const { data: photoData, error: dbError } = await createPhoto(supabase, {
           event_id: eventId,
           url: publicUrl,
           original_name: file.name,
           width,
           height,
-          status: 'processing',
+          status: 'uploading',
         });
 
         if (dbError) {
           logger.error('Photo insert failed', { dbError });
-
           throw new Error(`Erreur Base de données: ${dbError.message}`);
         }
 
-        // Notify parent immediately
+        // 4. Notify parent so the gallery shows the photo immediately
         if (onPhotoUploaded && photoData) {
-            onPhotoUploaded(photoData);
+          onPhotoUploaded(photoData);
         }
 
-        // Trigger server-side processing asynchronously.
+        // 5. Face detection (browser-side) -- photo is already persisted
+        setProgress(prev => ({ ...prev, [statusKey]: 'Analyse visage...' }));
+        let faces: FacePayload[] = [];
+        try {
+          faces = await detectFacesInBrowser(fileToUpload);
+          logger.info('Face detection completed in browser', { file: file.name, faces: faces.length });
+          if (faces.length === 0) {
+            logger.warn('No faces detected for photo', { file: file.name });
+          }
+        } catch (faceErr) {
+          logger.error('Face detection failed, continuing without faces', { file: file.name, error: faceErr });
+        }
+
+        // 6. Send faces to server for storage + status update
+        setProgress(prev => ({ ...prev, [statusKey]: 'Finalisation...' }));
         fetch('/api/photos/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ photoId: photoData.id, imageUrl: publicUrl, faces }),
         })
         .then(async (res) => {
-            if (!res.ok) {
-              const body = await res.text();
-              logger.error('Async process trigger failed', { status: res.status, body });
-              setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: analyse serveur' }));
-              return;
-            }
-            const body = await res.json();
-            logger.info('Async process trigger success', { photoId: photoData.id, facesFound: body.facesFound });
-            setProgress(prev => ({ ...prev, [statusKey]: `Terminé (${body.facesFound} visage${body.facesFound > 1 ? 's' : ''})` }));
+          if (!res.ok) {
+            const body = await res.text();
+            logger.error('Async process trigger failed', { status: res.status, body });
+            setProgress(prev => ({ ...prev, [statusKey]: 'Erreur: analyse serveur' }));
+            return;
+          }
+          const body = await res.json();
+          logger.info('Async process trigger success', { photoId: photoData.id, facesFound: body.facesFound });
+          setProgress(prev => ({ ...prev, [statusKey]: `Terminé (${body.facesFound} visage${body.facesFound > 1 ? 's' : ''})` }));
         })
         .catch((err) => {
           logger.error('Async process trigger error', { err });
@@ -289,9 +295,7 @@ export default function PhotoUpload({ eventId, onUploadComplete, onPhotoUploaded
     }
 
     setUploading(false);
-
-    // Once batch is done, clear successful ones
-    setFiles(prev => prev.filter(f => progress[f.name] !== 'Terminé'));
+    setFiles(prev => prev.filter(f => !progress[f.name]?.startsWith('Terminé')));
     onUploadComplete();
   };
 

@@ -91,29 +91,43 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
     setLoading(true);
     const img = new Image();
     img.src = dataUrl;
-    await Promise.race([
-      new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Impossible de charger l'image."));
-      }),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Chargement de la photo trop long.')), 6000)),
-    ]);
+
+    try {
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Impossible de charger l'image."));
+        }),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Chargement de la photo trop long.')), 10000)),
+      ]);
+    } catch (loadErr) {
+      console.error('Image load error', loadErr);
+      setErrorMessage(loadErr instanceof Error ? loadErr.message : "Erreur de chargement.");
+      setImage(null);
+      setMode('initial');
+      setLoading(false);
+      return;
+    }
 
     try {
       const descriptor = await Promise.race([
         getFaceDescriptor(img),
-        new Promise<undefined>((_, reject) => setTimeout(() => reject(new Error('Analyse trop longue. Réessayez avec une photo bien éclairée, cadrée de face et plus rapprochée.')), 25000)),
+        new Promise<undefined>((_, reject) =>
+          setTimeout(() => reject(new Error(
+            'Analyse trop longue (>45s). Vérifiez que votre navigateur supporte WebGL et réessayez.'
+          )), 45000)
+        ),
       ]);
       if (descriptor) {
         onDescriptorComputed(descriptor, dataUrl);
       } else {
-        setErrorMessage("Aucun visage détecté. Essayez une autre photo.");
+        setErrorMessage("Aucun visage détecté. Essayez avec une photo plus rapprochée et bien éclairée.");
         setImage(null);
         setMode('initial');
       }
     } catch (error) {
-      console.error(error);
-      setErrorMessage(error instanceof Error ? error.message : "Erreur lors de l'analyse.");
+      console.error('Face detection error', error);
+      setErrorMessage(error instanceof Error ? error.message : "Erreur lors de l'analyse du visage.");
       setImage(null);
       setMode('initial');
     } finally {
