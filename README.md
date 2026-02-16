@@ -44,6 +44,10 @@ Le schema SQL canonique est:
 1. `supabase/migrations/20260101000000_initial_schema.sql`
 2. `supabase/migrations/20260102000000_add_vector_index.sql` (optionnel, apres volume de donnees)
 
+Si votre projet existait deja avant cette refonte et que vous voyez `PGRST203` sur `create_event_v3`, executez aussi:
+
+3. `supabase/migrations/20260103000000_hotfix_drop_legacy_create_event_v3.sql` (one-shot hotfix)
+
 `supabase/schema.sql` est desormais un fichier pointeur (non source de verite).
 
 ## Flux principal ML

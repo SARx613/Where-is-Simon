@@ -16,7 +16,25 @@ export async function createEventViaRpc(
   client: Client,
   input: { name: string; slug: string; date: string; location: string; description: string; tier: string }
 ) {
-  return client.rpc('create_event_v3', input);
+  const startedAt = Date.now();
+  console.debug('[createEventViaRpc] request', {
+    name: input.name,
+    slug: input.slug,
+    date: input.date,
+    location: input.location,
+    tier: input.tier,
+  });
+  const result = await client.rpc('create_event_v3', input);
+  console.debug('[createEventViaRpc] response', {
+    durationMs: Date.now() - startedAt,
+    hasError: Boolean(result.error),
+    errorCode: result.error?.code,
+    errorMessage: result.error?.message,
+    errorDetails: result.error?.details,
+    errorHint: result.error?.hint,
+    data: result.data,
+  });
+  return result;
 }
 
 export async function listEventsForPhotographer(client: Client, photographerId: string) {

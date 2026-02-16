@@ -19,6 +19,7 @@ export default function NewEventPage() {
     slug: ''
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -34,6 +35,7 @@ export default function NewEventPage() {
     e.preventDefault();
     setLoading(true);
     setErrorMessage(null);
+    setDebugInfo(null);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -49,10 +51,29 @@ export default function NewEventPage() {
         description: formData.description,
         tier: formData.tier
       });
+      console.debug('[NewEventPage] payload validated', {
+        name: payload.name,
+        slug: payload.slug,
+        date: payload.date,
+        location: payload.location,
+        tier: payload.tier,
+      });
       const { data, error } = await createEventViaRpc(supabase, payload);
 
       if (error) {
-        console.error("Supabase Error:", error);
+        console.error('[NewEventPage] Supabase RPC error', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          full: error,
+        });
+        setDebugInfo(JSON.stringify({
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        }, null, 2));
         throw new Error(error.message + " (" + error.code + ")");
       }
 
@@ -74,6 +95,11 @@ export default function NewEventPage() {
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md space-y-6">
         {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+        {debugInfo && (
+          <pre className="text-xs text-red-700 bg-red-50 border border-red-200 rounded p-3 overflow-x-auto">
+            {debugInfo}
+          </pre>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Nom de l&apos;événement</label>
           <input

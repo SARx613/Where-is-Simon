@@ -10,6 +10,7 @@ create extension if not exists vector;
 drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user();
 drop function if exists public.match_face_photos_v2(vector, float, int, uuid);
+drop function if exists public.create_event_v3(text, text, date, text, text, text);
 drop function if exists public.create_event_v3(text, text, text, text, text, text);
 drop function if exists public.update_updated_at_column();
 
