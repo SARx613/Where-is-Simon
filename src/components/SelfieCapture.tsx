@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Camera, Upload, X, RefreshCw } from 'lucide-react';
-import { getFaceDescriptor } from '@/lib/face-rec';
+import { getFaceDescriptor, loadFaceModels } from '@/lib/face-rec';
 
 interface SelfieCaptureProps {
   onDescriptorComputed: (descriptor: Float32Array, imageUrl: string) => void;
@@ -13,8 +13,25 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [modelsReady, setModelsReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    loadFaceModels()
+      .then(() => {
+        if (mounted) setModelsReady(true);
+      })
+      .catch((error) => {
+        console.error('Model preload failed', error);
+        if (mounted) setErrorMessage('Impossible de charger les modèles IA. Réessayez dans quelques secondes.');
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Camera Logic
   const startCamera = async () => {
@@ -74,20 +91,31 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
     setLoading(true);
     const img = new Image();
     img.src = dataUrl;
-    await new Promise(r => img.onload = r);
+    await Promise.race([
+      new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Impossible de charger l'image."));
+      }),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Chargement de la photo trop long.')), 6000)),
+    ]);
 
     try {
-      const descriptor = await getFaceDescriptor(img);
+      const descriptor = await Promise.race([
+        getFaceDescriptor(img),
+        new Promise<undefined>((_, reject) => setTimeout(() => reject(new Error('Analyse trop longue. Réessayez avec une photo plus nette.')), 10000)),
+      ]);
       if (descriptor) {
         onDescriptorComputed(descriptor, dataUrl);
       } else {
         setErrorMessage("Aucun visage détecté. Essayez une autre photo.");
         setImage(null);
-        if (mode === 'camera') startCamera();
+        setMode('initial');
       }
     } catch (error) {
       console.error(error);
-      setErrorMessage("Erreur lors de l'analyse.");
+      setErrorMessage(error instanceof Error ? error.message : "Erreur lors de l'analyse.");
+      setImage(null);
+      setMode('initial');
     } finally {
       setLoading(false);
     }
@@ -129,8 +157,10 @@ export default function SelfieCapture({ onDescriptorComputed }: SelfieCapturePro
       {mode === 'initial' && (
         <div className="space-y-4">
           {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+          {!modelsReady && <p className="text-xs text-gray-500">Initialisation des modèles IA...</p>}
           <button
             onClick={startCamera}
+            disabled={!modelsReady}
             className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 flex items-center justify-center transition"
           >
             <Camera className="mr-2" />

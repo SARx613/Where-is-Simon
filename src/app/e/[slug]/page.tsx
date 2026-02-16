@@ -50,6 +50,7 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
     if (!event) return;
     setSearching(true);
     setErrorMessage(null);
+    const startedAt = Date.now();
 
     // Convert Float32Array to number[]
     const embedding = Array.from(descriptor);
@@ -62,9 +63,23 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
     });
 
     if (error) {
-      console.error(error);
-      setErrorMessage('Erreur lors de la recherche.');
+      console.error('[Guest search] RPC error', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+
+      if (error.message?.includes('Event not found or not accessible')) {
+        setErrorMessage("Cet événement n'est pas accessible pour la recherche invité. Vérifiez qu'il est publié/public.");
+      } else {
+        setErrorMessage(`Erreur de recherche (${error.code ?? 'unknown'}): ${error.message ?? 'inconnue'}`);
+      }
     } else {
+      console.debug('[Guest search] completed', {
+        durationMs: Date.now() - startedAt,
+        matches: data?.length ?? 0,
+      });
       setMatches(data || []);
       setHasSearched(true);
     }
@@ -98,6 +113,11 @@ export default function GuestEventPage({ params }: { params: Promise<{ slug: str
 
             {searching && <p className="text-indigo-600 font-medium">Recherche de vos photos...</p>}
             {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+            {!event.is_public && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                L&apos;événement est actuellement privé. Activez le mode public pour permettre la recherche invité.
+              </p>
+            )}
           </div>
         ) : (
           <div>

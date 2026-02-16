@@ -16,5 +16,17 @@ export async function createPhoto(
 }
 
 export async function matchFacePhotos(client: Client, input: { query_embedding: number[]; filter_event_id: string; match_threshold: number; match_count: number }) {
-  return client.rpc('match_face_photos_v2', input);
+  const startedAt = Date.now();
+  const result = await client.rpc('match_face_photos_v2', input);
+  console.debug('[matchFacePhotos] rpc', {
+    durationMs: Date.now() - startedAt,
+    eventId: input.filter_event_id,
+    threshold: input.match_threshold,
+    count: input.match_count,
+    hasError: Boolean(result.error),
+    errorCode: result.error?.code,
+    errorMessage: result.error?.message,
+    rows: result.data?.length ?? 0,
+  });
+  return result;
 }
