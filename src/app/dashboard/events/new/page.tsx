@@ -78,8 +78,19 @@ export default function NewEventPage() {
       }
 
       // RPC returns { id: ... } inside data
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      router.push(`/dashboard/events/${(data as any).id}`);
+      const eventId = (data as { id: string }).id;
+
+      // Publish by default so guest links work immediately.
+      const { error: publishError } = await supabase
+        .from('events')
+        .update({ is_public: true, status: 'published' })
+        .eq('id', eventId);
+
+      if (publishError) {
+        console.warn('[NewEventPage] Could not auto-publish event', publishError);
+      }
+
+      router.push(`/dashboard/events/${eventId}`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erreur inconnue";
       console.error("Creation failed:", error);

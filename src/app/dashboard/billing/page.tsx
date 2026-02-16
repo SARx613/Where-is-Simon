@@ -1,9 +1,62 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createClient } from '@/lib/supabase';
+import type { Database } from '@/types/supabase';
+
+type Order = Database['public']['Tables']['orders']['Row'];
 
 export default function BillingPage() {
+  const supabase = createClient();
   const [loading, setLoading] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBillingData() {
+      setLoadError(null);
+      const { data: authData } = await supabase.auth.getUser();
+      const userId = authData.user?.id;
+      if (!userId) return;
+
+      const { data: eventsData, error: eventsError } = await supabase.from('events').select('id').eq('photographer_id', userId);
+      if (eventsError) {
+        if (!cancelled) setLoadError(eventsError.message);
+        return;
+      }
+      const eventIds = (eventsData ?? []).map((event: { id: string }) => event.id);
+      if (eventIds.length === 0) {
+        if (!cancelled) setOrders([]);
+        return;
+      }
+
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .in('event_id', eventIds)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (ordersError) {
+        if (!cancelled) setLoadError(ordersError.message);
+        return;
+      }
+
+      if (!cancelled) setOrders(ordersData ?? []);
+    }
+
+    loadBillingData();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  const paidRevenue = useMemo(() => {
+    const cents = orders.filter((order) => order.status === 'paid').reduce((sum, order) => sum + (order.total_amount ?? 0), 0);
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+  }, [orders]);
 
   const handleSubscribe = async (priceId: string) => {
     setLoading(true);
@@ -36,6 +89,23 @@ export default function BillingPage() {
   return (
     <div className="max-w-4xl mx-auto">
       <h2 className="text-3xl font-bold text-gray-800 mb-6">Abonnement & Facturation</h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Revenus encaissés</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1">{paidRevenue}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Commandes</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1">{orders.length}</p>
+        </div>
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Commandes payées</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1">{orders.filter((o) => o.status === 'paid').length}</p>
+        </div>
+      </div>
+
+      {loadError && <p className="text-sm text-red-600 mb-4">Erreur statistiques: {loadError}</p>}
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="p-6 border-b border-gray-200">
@@ -90,6 +160,30 @@ export default function BillingPage() {
            </div>
            <p className="text-xs text-gray-500 mt-2">Pour tester, vous devez ajouter STRIPE_SECRET_KEY dans .env.local et remplacer les IDs de prix.</p>
         </div>
+      </div>
+
+      <div className="bg-white shadow rounded-lg mt-6 p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Dernières commandes</h3>
+        {orders.length === 0 ? (
+          <p className="text-sm text-slate-500">Aucune commande pour le moment.</p>
+        ) : (
+          <ul className="space-y-3">
+            {orders.slice(0, 10).map((order) => (
+              <li key={order.id} className="border border-slate-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">{order.customer_email}</p>
+                  <p className="text-xs text-slate-500">{new Date(order.created_at).toLocaleString()}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format((order.total_amount ?? 0) / 100)}
+                  </p>
+                  <p className="text-xs text-slate-500 uppercase">{order.status}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

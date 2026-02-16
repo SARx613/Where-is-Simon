@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState, use } from 'react';
 import { createClient } from '@/lib/supabase';
 import { Database } from '@/types/supabase';
 import PhotoUpload from '@/components/PhotoUpload';
-import { Calendar, MapPin, Image as ImageIcon, Loader, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Calendar, MapPin, Image as ImageIcon, Loader, RefreshCw, AlertTriangle, Users } from 'lucide-react';
 import { getEventById } from '@/services/events.service';
 import { listPhotosForEvent } from '@/services/photos.service';
+import { EventSectionTabs } from '@/components/events/EventSectionTabs';
+import { clusterFaces, normalizeFaces } from '@/lib/face-grouping';
 
 type Event = Database['public']['Tables']['events']['Row'];
 type Photo = Database['public']['Tables']['photos']['Row'];
@@ -19,12 +20,12 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
   const [event, setEvent] = useState<Event | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'photos' | 'settings'>('photos');
   const [processingCount, setProcessingCount] = useState(0);
+  const [facesLoading, setFacesLoading] = useState(false);
+  const [faceRows, setFaceRows] = useState<Array<{ id: string; photo_id: string; embedding: string | number[]; photoUrl: string }>>([]);
 
   const supabase = createClient();
 
-  // Define loadData using useCallback to be stable and reusable
   const loadData = async () => {
     const { data: eventData } = await getEventById(supabase, id);
 
@@ -39,6 +40,26 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
         setProcessingCount(photosData.filter(p => p.status === 'processing').length);
       }
     }
+
+    setFacesLoading(true);
+    const { data: facesData, error: facesError } = await supabase
+      .from('photo_faces')
+      .select('id,photo_id,embedding,photos!inner(event_id,url)')
+      .eq('photos.event_id', id)
+      .limit(5000);
+
+    if (!facesError && facesData) {
+      const mapped = (facesData as Array<{ id: string; photo_id: string; embedding: string | number[]; photos: { url: string } | { url: string }[] }>)
+        .map((row) => ({
+          id: row.id,
+          photo_id: row.photo_id,
+          embedding: row.embedding,
+          photoUrl: Array.isArray(row.photos) ? row.photos[0]?.url ?? '' : row.photos?.url ?? '',
+        }))
+        .filter((row) => row.photoUrl);
+      setFaceRows(mapped);
+    }
+    setFacesLoading(false);
     setLoading(false);
   };
 
@@ -63,6 +84,18 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
         setProcessingCount(prev => prev + 1);
     }
   };
+
+  const clusters = useMemo(() => {
+    return clusterFaces(normalizeFaces(faceRows));
+  }, [faceRows]);
+
+  const faceCountByPhoto = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const face of faceRows) {
+      counts.set(face.photo_id, (counts.get(face.photo_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [faceRows]);
 
   const retryProcessing = async (photo: Photo) => {
      try {
@@ -109,6 +142,10 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
                 <ImageIcon size={16} className="mr-1" />
                 <span>{photos.length} photos</span>
               </div>
+              <div className="flex items-center">
+                <Users size={16} className="mr-1" />
+                <span>{clusters.length} invités détectés</span>
+              </div>
             </div>
             <p className="mt-4 text-gray-600 max-w-2xl">{event.description}</p>
           </div>
@@ -121,121 +158,125 @@ export default function EventDetailsPage({ params }: { params: Promise<{ id: str
             <div className="text-sm text-gray-500">
                Slug: <span className="font-mono bg-gray-100 px-1 rounded">{event.slug}</span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('photos')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'photos'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Photos & Upload
-          </button>
-          <Link
-            href={`/dashboard/events/${id}/settings`}
-            className={`py-4 px-1 border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300`}
-          >
-            Paramètres
-          </Link>
-        </nav>
-      </div>
-
-      {activeTab === 'photos' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
-             <div className="flex justify-between items-center mb-4">
-               <h3 className="font-medium text-gray-700">Galerie ({photos.length})</h3>
-               <button
-                 onClick={() => loadData()}
-                 className="flex items-center text-sm text-indigo-600 hover:text-indigo-800"
-               >
-                 <RefreshCw size={14} className={`mr-1 ${loading ? 'animate-spin' : ''}`} />
-                 Actualiser
-               </button>
-             </div>
-
-             {processingCount > 0 && (
-                 <div className="mb-4 bg-yellow-50 p-3 rounded text-sm text-yellow-800 border border-yellow-200 flex items-center">
-                    <Loader size={14} className="animate-spin mr-2" />
-                    {processingCount} photos en cours de traitement...
-                 </div>
-             )}
-
-             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-               {photos.map((photo) => (
-                 <div key={photo.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative group">
-                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                   <img src={photo.url} alt="Event photo" className={`w-full h-full object-cover ${photo.status === 'processing' ? 'opacity-50' : ''}`} />
-
-                   {photo.status === 'processing' && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 backdrop-blur-sm">
-                          <Loader className="animate-spin text-white" />
-                      </div>
-                   )}
-
-                   {(photo.status === 'error' || (photo.status === 'processing' && new Date(photo.created_at).getTime() < Date.now() - 60000 * 5)) && ( // Show retry if error OR if stuck processing > 5 mins
-                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-50 bg-opacity-80 p-2 text-center">
-                           <AlertTriangle className="text-red-600 mb-1" size={24} />
-                           <span className="text-xs text-red-700 font-bold mb-2">Erreur traitement</span>
-                           <button
-                             onClick={(e) => { e.stopPropagation(); retryProcessing(photo); }}
-                             className="px-2 py-1 bg-white border border-red-200 rounded text-xs text-red-700 shadow-sm hover:bg-red-50"
-                           >
-                             Relancer
-                           </button>
-                       </div>
-                   )}
-
-                   {/* Info overlay on hover could go here */}
-                 </div>
-               ))}
-               {photos.length === 0 && (
-                 <div className="col-span-full py-12 text-center text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
-                   Aucune photo pour le moment.
-                 </div>
-               )}
-             </div>
-          </div>
-
-          <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-lg shadow-sm sticky top-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Ajouter des photos</h3>
-              <PhotoUpload
-                 eventId={event.id}
-                 onUploadComplete={() => {
-                   // We don't necessarily need to reload everything if we updated incrementally,
-                   // but doing a final sync is safe.
-                   // However, if we reload, we might lose the optimistic 'processing' state if the API hasn't finished.
-                   // So maybe just do nothing here if we rely on onPhotoUploaded.
-                   // But user might have deleted photos etc. Let's leave it or remove it.
-                   // Actually, if we reload, the DB might still say 'processing' which is fine.
-                 }}
-                 onPhotoUploaded={handlePhotoUploaded}
-              />
-
-              <div className="mt-6 pt-6 border-t text-sm text-gray-500">
-                <p>Les visages sont détectés automatiquement lors de l&apos;upload.</p>
-                <p className="mt-2">Formats supportés: JPG, PNG, WebP, HEIC.</p>
-                <p className="mt-2">Les photos sont compressées et redimensionnées automatiquement.</p>
-              </div>
+            <div className={`text-xs px-2 py-1 rounded-full ${event.is_public ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+              {event.is_public ? 'Galerie publique' : 'Galerie privée'}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {activeTab === 'settings' && (
-        <div className="bg-white p-8 rounded-lg shadow-sm">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Paramètres de l&apos;événement</h3>
-          <p className="text-gray-500">Configuration du filigrane, accès, etc. (À venir)</p>
+      <EventSectionTabs eventId={id} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2">
+           <div className="flex justify-between items-center mb-4">
+             <h3 className="font-medium text-gray-700">Galerie ({photos.length})</h3>
+             <button
+               onClick={() => loadData()}
+               className="flex items-center text-sm text-indigo-600 hover:text-indigo-800"
+             >
+               <RefreshCw size={14} className={`mr-1 ${loading ? 'animate-spin' : ''}`} />
+               Actualiser
+             </button>
+           </div>
+
+           {processingCount > 0 && (
+               <div className="mb-4 bg-yellow-50 p-3 rounded text-sm text-yellow-800 border border-yellow-200 flex items-center">
+                  <Loader size={14} className="animate-spin mr-2" />
+                  {processingCount} photos en cours de traitement...
+               </div>
+           )}
+
+           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+             {photos.map((photo) => (
+               <div key={photo.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative group">
+                 {/* eslint-disable-next-line @next/next/no-img-element */}
+                 <img src={photo.url} alt="Event photo" className={`w-full h-full object-cover ${photo.status === 'processing' ? 'opacity-50' : ''}`} />
+
+                 <div className="absolute top-2 left-2 text-[11px] bg-black/70 text-white rounded-full px-2 py-1">
+                   {faceCountByPhoto.get(photo.id) ?? 0} visage{(faceCountByPhoto.get(photo.id) ?? 0) > 1 ? 's' : ''}
+                 </div>
+
+                 {photo.status === 'processing' && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 backdrop-blur-sm">
+                        <Loader className="animate-spin text-white" />
+                    </div>
+                 )}
+
+                 {(photo.status === 'error' || (photo.status === 'processing' && new Date(photo.created_at).getTime() < Date.now() - 60000 * 5)) && (
+                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-50 bg-opacity-80 p-2 text-center">
+                         <AlertTriangle className="text-red-600 mb-1" size={24} />
+                         <span className="text-xs text-red-700 font-bold mb-2">Erreur traitement</span>
+                         <button
+                           onClick={(e) => { e.stopPropagation(); retryProcessing(photo); }}
+                           className="px-2 py-1 bg-white border border-red-200 rounded text-xs text-red-700 shadow-sm hover:bg-red-50"
+                         >
+                           Relancer
+                         </button>
+                     </div>
+                 )}
+               </div>
+             ))}
+             {photos.length === 0 && (
+               <div className="col-span-full py-12 text-center text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
+                 Aucune photo pour le moment.
+               </div>
+             )}
+           </div>
         </div>
-      )}
+
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm sticky top-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Ajouter des photos</h3>
+            <PhotoUpload
+               eventId={event.id}
+               onUploadComplete={() => loadData()}
+               onPhotoUploaded={handlePhotoUploaded}
+            />
+
+            <div className="mt-6 pt-6 border-t text-sm text-gray-500">
+              <p>Les visages sont détectés automatiquement lors de l&apos;upload.</p>
+              <p className="mt-2">Formats supportés: JPG, PNG, WebP, HEIC.</p>
+              <p className="mt-2">Les photos sont compressées et redimensionnées automatiquement.</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-lg shadow-sm">
+            <h3 className="text-base font-bold text-gray-900 mb-3">Invités détectés</h3>
+            <p className="text-xs text-gray-500 mb-4">Regroupement automatique des visages similaires (bêta).</p>
+
+            {facesLoading ? (
+              <div className="text-sm text-gray-500 flex items-center">
+                <Loader size={14} className="animate-spin mr-2" />
+                Analyse des visages...
+              </div>
+            ) : clusters.length === 0 ? (
+              <p className="text-sm text-gray-500">Aucun visage regroupé pour le moment.</p>
+            ) : (
+              <ul className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                {clusters.slice(0, 30).map((cluster, index) => (
+                  <li key={cluster.id} className="border border-slate-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-slate-800">Invité {String(index + 1).padStart(2, '0')}</p>
+                      <span className="text-xs text-slate-500">
+                        {cluster.faceCount} visages · {cluster.photoCount} photos
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      {cluster.samplePhotoUrls.map((url) => (
+                        <div key={url} className="w-12 h-12 rounded-md overflow-hidden bg-slate-100">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt="Aperçu invité" className="w-full h-full object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

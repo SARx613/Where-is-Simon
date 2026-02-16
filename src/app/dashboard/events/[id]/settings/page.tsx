@@ -3,12 +3,14 @@
 import { useEffect, useState, use } from 'react';
 import { createClient } from '@/lib/supabase';
 import { QrCode, Save, Shield, MessageSquare, Download } from 'lucide-react';
+import { EventSectionTabs } from '@/components/events/EventSectionTabs';
 
 export default function EventSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
   const [settings, setSettings] = useState({
     watermark_text: 'Where is Simon?',
     watermark_opacity: 0.5,
@@ -42,9 +44,10 @@ export default function EventSettingsPage({ params }: { params: Promise<{ id: st
 
   const handleSave = async () => {
     setSaving(true);
+    setFeedback(null);
     const { error } = await supabase.from('events').update(settings).eq('id', id);
-    if (error) alert('Erreur: ' + error.message);
-    else alert('Paramètres sauvegardés !');
+    if (error) setFeedback('Erreur: ' + error.message);
+    else setFeedback('Paramètres sauvegardés.');
     setSaving(false);
   };
 
@@ -63,6 +66,14 @@ export default function EventSettingsPage({ params }: { params: Promise<{ id: st
           {saving ? 'Enregistrement...' : 'Sauvegarder'}
         </button>
       </div>
+
+      <EventSectionTabs eventId={id} />
+
+      {feedback && (
+        <p className={`text-sm ${feedback.startsWith('Erreur') ? 'text-red-600' : 'text-green-600'}`}>
+          {feedback}
+        </p>
+      )}
 
       {/* QR Code & Access */}
       <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
@@ -184,7 +195,7 @@ export default function EventSettingsPage({ params }: { params: Promise<{ id: st
               <input
                 type="number"
                 value={settings.price_per_photo}
-                onChange={e => setSettings({...settings, price_per_photo: parseInt(e.target.value)})}
+                onChange={e => setSettings({...settings, price_per_photo: Number.isFinite(parseInt(e.target.value, 10)) ? parseInt(e.target.value, 10) : 0})}
                 className="w-full px-3 py-2 border rounded-md"
                 placeholder="Ex: 500 pour 5.00€"
               />

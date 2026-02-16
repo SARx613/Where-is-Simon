@@ -42,18 +42,31 @@ export async function getFaceDescriptor(imageElement: HTMLImageElement | HTMLVid
   await loadFaceModels();
   const input = prepareDetectionInput(imageElement);
 
-  // Detect single face with highest confidence
-  // We use SsdMobilenetv1 for better accuracy than TinyFaceDetector
-  const detection = await faceapi
+  // First try: single face (fast path)
+  const single = await faceapi
     .detectSingleFace(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.35 }))
     .withFaceLandmarks()
     .withFaceDescriptor();
 
-  if (!detection) {
-    return undefined;
+  if (single) {
+    return single.descriptor;
   }
 
-  return detection.descriptor;
+  // Fallback: detect multiple and take the largest face, useful when single-face fails.
+  const allDetections = await faceapi
+    .detectAllFaces(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
+    .withFaceLandmarks()
+    .withFaceDescriptors();
+
+  if (allDetections.length === 0) return undefined;
+
+  const best = allDetections.reduce((prev, curr) => {
+    const prevArea = prev.detection.box.width * prev.detection.box.height;
+    const currArea = curr.detection.box.width * curr.detection.box.height;
+    return currArea > prevArea ? curr : prev;
+  });
+
+  return best.descriptor;
 }
 
 export async function getAllFaceDescriptors(imageElement: HTMLImageElement): Promise<faceapi.WithFaceDescriptor<faceapi.WithFaceLandmarks<{ detection: faceapi.FaceDetection }>>[]> {
