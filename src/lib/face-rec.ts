@@ -1,6 +1,11 @@
-import * as faceapi from '@vladmandic/face-api';
-
-export { faceapi };
+/**
+ * Face detection & recognition utilities.
+ *
+ * IMPORTANT: @vladmandic/face-api bundles TensorFlow.js which requires
+ * browser globals (TextEncoder, WebGL, etc.). We lazy-load the module via
+ * dynamic import() so it is NEVER evaluated during Next.js SSR / static
+ * prerendering.  Every exported function calls getFaceApi() first.
+ */
 
 export type DetectorBackend = 'ssdMobilenetv1' | 'tinyFaceDetector';
 
@@ -8,6 +13,22 @@ const MODEL_URL = '/models';
 const MAX_DETECTION_SIZE_SINGLE = 640;
 const MAX_DETECTION_SIZE_MULTI = 1400;
 
+// ---------------------------------------------------------------------------
+// Lazy singleton for the faceapi module
+// ---------------------------------------------------------------------------
+type FaceApiModule = typeof import('@vladmandic/face-api');
+let _faceapiPromise: Promise<FaceApiModule> | null = null;
+
+async function getFaceApi(): Promise<FaceApiModule> {
+  if (!_faceapiPromise) {
+    _faceapiPromise = import('@vladmandic/face-api');
+  }
+  return _faceapiPromise;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 function prepareDetectionInput(
   imageElement: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement,
   maxDetectionSize: number
@@ -43,15 +64,11 @@ function prepareDetectionInput(
   return canvas;
 }
 
-function getDetectorOptions(backend: DetectorBackend, minConfidence: number): faceapi.TinyFaceDetectorOptions | faceapi.SsdMobilenetv1Options {
-  if (backend === 'tinyFaceDetector') {
-    return new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: minConfidence });
-  }
-  return new faceapi.SsdMobilenetv1Options({ minConfidence });
-}
-
-// Load shared models (landmarks + recognition). Always needed.
+// ---------------------------------------------------------------------------
+// Model loading
+// ---------------------------------------------------------------------------
 async function loadSharedModels() {
+  const faceapi = await getFaceApi();
   if (!faceapi.nets.faceLandmark68Net.params) {
     await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
   }
@@ -60,8 +77,8 @@ async function loadSharedModels() {
   }
 }
 
-// Load a specific detector backend.
 async function loadDetector(backend: DetectorBackend) {
+  const faceapi = await getFaceApi();
   if (backend === 'tinyFaceDetector') {
     if (!faceapi.nets.tinyFaceDetector.params) {
       await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
@@ -87,6 +104,18 @@ export async function loadAllDetectors() {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// Detection
+// ---------------------------------------------------------------------------
+
+async function getDetectorOptions(backend: DetectorBackend, minConfidence: number) {
+  const faceapi = await getFaceApi();
+  if (backend === 'tinyFaceDetector') {
+    return new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: minConfidence });
+  }
+  return new faceapi.SsdMobilenetv1Options({ minConfidence });
+}
+
 /**
  * Detect a single face and return its 128-dim descriptor.
  * Tries single-face first, then falls back to multi-face picking the largest.
@@ -95,18 +124,19 @@ export async function getFaceDescriptor(
   imageElement: HTMLImageElement | HTMLVideoElement,
   backend: DetectorBackend = 'ssdMobilenetv1',
 ): Promise<Float32Array | undefined> {
+  const faceapi = await getFaceApi();
   await loadFaceModels(backend);
   const input = prepareDetectionInput(imageElement, MAX_DETECTION_SIZE_SINGLE);
 
   const single = await faceapi
-    .detectSingleFace(input, getDetectorOptions(backend, 0.35))
+    .detectSingleFace(input, await getDetectorOptions(backend, 0.35))
     .withFaceLandmarks()
     .withFaceDescriptor();
 
   if (single) return single.descriptor;
 
   const allDetections = await faceapi
-    .detectAllFaces(input, getDetectorOptions(backend, 0.3))
+    .detectAllFaces(input, await getDetectorOptions(backend, 0.3))
     .withFaceLandmarks()
     .withFaceDescriptors();
 
@@ -128,19 +158,20 @@ export async function getFaceDescriptor(
 export async function getAllFaceDescriptors(
   imageElement: HTMLImageElement,
   backend: DetectorBackend = 'ssdMobilenetv1',
-): Promise<faceapi.WithFaceDescriptor<faceapi.WithFaceLandmarks<{ detection: faceapi.FaceDetection }>>[]> {
+) {
+  const faceapi = await getFaceApi();
   await loadFaceModels(backend);
   const input = prepareDetectionInput(imageElement, MAX_DETECTION_SIZE_MULTI);
 
   const firstPass = await faceapi
-    .detectAllFaces(input, getDetectorOptions(backend, 0.25))
+    .detectAllFaces(input, await getDetectorOptions(backend, 0.25))
     .withFaceLandmarks()
     .withFaceDescriptors();
 
   if (firstPass.length > 0) return firstPass;
 
   const secondPass = await faceapi
-    .detectAllFaces(input, getDetectorOptions(backend, 0.15))
+    .detectAllFaces(input, await getDetectorOptions(backend, 0.15))
     .withFaceLandmarks()
     .withFaceDescriptors();
 
@@ -155,6 +186,7 @@ export async function debugDetectFaces(
   backend: DetectorBackend,
 ): Promise<{ backend: DetectorBackend; loadMs: number; detectMs: number; faces: number; error?: string }> {
   try {
+    const faceapi = await getFaceApi();
     const t0 = performance.now();
     await loadFaceModels(backend);
     const loadMs = Math.round(performance.now() - t0);
@@ -162,7 +194,7 @@ export async function debugDetectFaces(
     const t1 = performance.now();
     const input = prepareDetectionInput(imageElement, MAX_DETECTION_SIZE_MULTI);
     const detections = await faceapi
-      .detectAllFaces(input, getDetectorOptions(backend, 0.2))
+      .detectAllFaces(input, await getDetectorOptions(backend, 0.2))
       .withFaceLandmarks()
       .withFaceDescriptors();
     const detectMs = Math.round(performance.now() - t1);
